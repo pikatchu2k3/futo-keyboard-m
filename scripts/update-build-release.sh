@@ -10,7 +10,7 @@ REPO_DIR="/mnt/wd_nvme/futo-keyboard-m"
 OWNER="pikatchu2k3"
 REPO="futo-keyboard-m"
 APK="build/outputs/apk/unstable/release/futo-shizuku-unstable-release.apk"
-GRADLE_TASK=":unstable:assembleUnstableRelease"
+GRADLE_TASK="assembleUnstableRelease"
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(grep '^GITHUB_TOKEN=' ~/.hermes/.env | cut -d= -f2)}"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
