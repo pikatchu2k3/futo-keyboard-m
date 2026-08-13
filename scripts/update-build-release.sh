@@ -3,13 +3,17 @@
 # Holt die neuesten FUTO-Änderungen, merged sie in den Custom-Branch,
 # baut das Release-APK und veröffentlicht es als GitHub-Release.
 #
-# Exit-Codes: 0 = ok (leerer stdout bei "kein Update" = still), 1 = Fehler
+# Verhalten (für no_agent-Cron):
+#  - Erfolg: leerer stdout + exit 0 = still (Obtainium informiert den Nutzer)
+#  - Fehler: Fehlermeldung auf stdout + exit 1 UND Repair-Agent wird gefeuert
+#  - Fortschritt/Diagnose: stderr (landet im Job-Log)
 set -euo pipefail
 
 REPO_DIR="/mnt/wd_nvme/futo-keyboard-m"
 OWNER="pikatchu2k3"
 REPO="futo-keyboard-m"
 GRADLE_TASK="assembleUnstableRelease"
+REPAIR_JOB_ID_FILE="/home/mini/.hermes/futo-repair-job.id"
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(grep '^GITHUB_TOKEN=' ~/.hermes/.env | cut -d= -f2)}"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
@@ -17,35 +21,48 @@ export JAVA_HOME="${JAVA_HOME:-/opt/jdk-21.0.6+7}"
 export PATH="$JAVA_HOME/bin:$PATH"
 export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m"
 
+log() { echo "$*" >&2; }
+
+# Fehlerbehandlung: melden + Reparatur-Agent triggern
+fail() {
+  echo "!!! $* !!!"
+  REPAIR_JOB_ID=""
+  [ -f "$REPAIR_JOB_ID_FILE" ] && REPAIR_JOB_ID=$(cat "$REPAIR_JOB_ID_FILE")
+  if [ -n "$REPAIR_JOB_ID" ] && command -v hermes >/dev/null 2>&1; then
+    echo "--> Reparatur-Agent wird gestartet (Job $REPAIR_JOB_ID)..."
+    hermes cron run "$REPAIR_JOB_ID" 2>&1 | tail -3 || true
+  else
+    echo "--> Reparatur-Agent NICHT gestartet (Job-ID oder hermes CLI fehlt)"
+  fi
+  exit 1
+}
+
 cd "$REPO_DIR"
 
-echo "=== [1/5] Upstream holen ==="
+log "=== [1/5] Upstream holen ==="
 git fetch upstream master 2>&1 | tail -2
 
-UPSTREAM_SHA=$(git rev-parse upstream/master)
-LOCAL_SHA=$(git rev-parse HEAD)
-if [ "$UPSTREAM_SHA" = "$LOCAL_SHA" ]; then
-  exit 0   # kein neues Update -> still
+if git merge-base --is-ancestor upstream/master HEAD 2>/dev/null; then
+  log "Kein neues Update (upstream ist in HEAD enthalten) -> still"
+  exit 0
 fi
 
-echo "=== [2/5] Upstream mergen ==="
+log "=== [2/5] Upstream mergen ==="
 if ! git merge upstream/master --no-edit 2>&1; then
-  echo "!!! MERGE-KONFLIKT in $REPO_DIR — manuell lösen: git status !!!"
-  exit 1
+  fail "MERGE-KONFLIKT in $REPO_DIR — Reparatur-Agent übernimmt"
 fi
 
-echo "=== [3/5] Build ($GRADLE_TASK) ==="
+log "=== [3/5] Build ($GRADLE_TASK) ==="
 if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25; then
-  echo "!!! BUILD FEHLGESCHLAGEN !!!"
-  exit 1
+  fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent übernimmt"
 fi
 APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
-[ -n "$APK" ] && [ -f "$APK" ] || { echo "!!! APK nicht gefunden !!!"; exit 1; }
+[ -n "$APK" ] && [ -f "$APK" ] || fail "APK nicht gefunden"
 
-echo "=== [4/5] Push zum Fork ==="
+log "=== [4/5] Push zum Fork ==="
 git push origin master 2>&1 | tail -2
 
-echo "=== [5/5] Release erstellen ==="
+log "=== [5/5] Release erstellen ==="
 UPSTREAM_HASH=$(git log -1 --format=%h upstream/master)
 UPSTREAM_DATE=$(git log -1 --format=%cs upstream/master)
 TAG="v$(date +%Y.%m.%d)"
@@ -57,6 +74,7 @@ MD5=$(md5sum "$APK" | cut -d' ' -f1)
 
 # Release anlegen (bei Tag-Kollision: Suffix anhängen)
 release_json=""
+code=""
 for suffix in "" "-2" "-3" "-4" "-5"; do
   tag="${TAG}${suffix}"
   resp=$(curl -s -w '\n%{http_code}' -X POST \
@@ -72,18 +90,19 @@ for suffix in "" "-2" "-3" "-4" "-5"; do
     break
   fi
 done
-[ -n "$release_json" ] && [ "$code" = "201" ] || { echo "!!! Release-Erstellung fehlgeschlagen !!!"; exit 1; }
+[ -n "$release_json" ] && [ "$code" = "201" ] || fail "Release-Erstellung fehlgeschlagen"
 
 RELEASE_ID=$(echo "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
-echo "--- APK hochladen ---"
+log "--- APK hochladen ---"
 curl -s -X POST \
   -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @"$APK" \
   "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RELEASE_ID/assets?name=$(basename "$APK")" \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print('Asset:', d.get('name'), d.get('size'), 'Bytes')"
+  | python3 -c "import json,sys; d=json.load(sys.stdin); print('Asset:', d.get('name'), d.get('size'), 'Bytes')" >&2
 
-echo ""
-echo "✅ Fertig: https://github.com/$OWNER/$REPO/releases/tag/$TAG"
-echo "APK: $(basename "$APK") | ${APK_SIZE} Bytes | MD5 ${MD5}"
+log "Release fertig: https://github.com/$OWNER/$REPO/releases/tag/$TAG"
+log "APK: $(basename "$APK") | ${APK_SIZE} Bytes | MD5 ${MD5}"
+# stiller Erfolg: kein stdout -> keine Signal-Meldung (Obtainium informiert den Nutzer)
+exit 0
