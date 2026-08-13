@@ -203,12 +203,29 @@
             android:name=".uix.actions.clipboard.ClipboardProvider"
             android:exported="false"
             android:grantUriPermissions="true" />
+
+        <!-- B1-Patch: transparente Proxy-Activity fuer den RECOGNIZE_SPEECH-Popup-Weg -->
+        <activity
+            android:name=".uix.actions.VoiceResultProxyActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:exported="false" />
     </application>
 
     <!-- To query enabled input methods for voice IME detection -->
     <queries>
         <intent>
             <action android:name="android.view.InputMethod" />
+        </intent>
+        <!-- B2-Patch: SpeechRecognizer-Interaktion (System-Spracherkennungsdienst) -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <!-- B1-Patch: RECOGNIZE_SPEECH-Popup (Offline Voice Input) sichtbar machen -->
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
         </intent>
     </queries>
 </manifest>

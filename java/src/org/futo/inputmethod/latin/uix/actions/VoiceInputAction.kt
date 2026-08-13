@@ -1,11 +1,29 @@
 package org.futo.inputmethod.latin.uix.actions
 
+import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.speech.RecognitionListener
+import android.speech.RecognitionService
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.util.Log
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
@@ -13,17 +31,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import org.futo.inputmethod.latin.MicPermissionActivity
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.uix.ANIMATE_BUBBLE
 import org.futo.inputmethod.latin.uix.AUDIO_FOCUS
@@ -61,16 +82,77 @@ import org.futo.voiceinput.shared.whisper.ModelManager
 import org.futo.voiceinput.shared.whisper.MultiModelRunConfiguration
 import java.util.Locale
 
+/**
+ * B1-Patch (Futo Shizuku): Spracherkennung ueber den RECOGNIZE_SPEECH-Popup-Weg.
+ *
+ * Statt auf die System-Voice-IME umzuschalten (switchToShortcutIme) oeffnet der
+ * Mic-Key direkt das Popup der Offline-Voice-App (RecognizeActivity). Die App
+ * nimmt mit IHRER eigenen Mikrofon-Berechtigung auf — Futo Shizuku braucht KEIN
+ * RECORD_AUDIO, kein System-Default-Setting, kein Shizuku/ADB. Das Ergebnis wird
+ * ueber die Proxy-Activity zurueckgegeben und ins aktive Textfeld committed.
+ * (Android-15-Hintergrund: ein IME ist nie "foreground", SpeechRecognizer-Start
+ * aus der Tastatur wird vom Framework abgelehnt — der Popup-Weg umgeht das.)
+ */
+private const val SYSTEM_VOICE_TAG = "FutoShizukuVoice"
+
+/** Bruecke zwischen der Proxy-Activity und dem Mic-Key-Action. */
+object VoiceResultBridge {
+    var onText: ((String) -> Unit)? = null
+}
+
 val SystemVoiceInputAction = Action(
     icon = R.drawable.mic_fill,
     name = R.string.action_system_voice_input_title,
-    simplePressImpl = { it, _ ->
-        it.triggerSystemVoiceInput()
+    simplePressImpl = { manager, _ ->
+        val context = manager.getContext()
+
+        val target = ComponentName(
+            "dev.notune.transcribe",
+            "dev.notune.transcribe.RecognizeActivity"
+        )
+        val available = context.packageManager.resolveActivity(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).setComponent(target),
+            0
+        ) != null
+        if (!available) {
+            manager.announce("Offline Voice Input ist nicht installiert")
+            return@Action
+        }
+
+        val transaction = manager.createInputTransaction()
+        VoiceResultBridge.onText = { text ->
+            try {
+                // Frische Transaction ZUM Commit-Zeitpunkt: nach dem Popup ist der Fokus
+                // zurueck im Feld und nur die aktuelle Connection kann committen.
+                val t = manager.createInputTransaction()
+                val sanitized = ModelOutputSanitizer.sanitize(text, t.textContext)
+                t.commit(sanitized)
+                manager.announce(text)
+            } catch (e: Exception) {
+                Log.w(SYSTEM_VOICE_TAG, "commit failed", e)
+            } finally {
+                VoiceResultBridge.onText = null
+            }
+        }
+
+        try {
+            // Die transparente Proxy-Activity uebernimmt startActivityForResult auf die
+            // RecognizeActivity (singleTask!) und reicht das Ergebnis ueber die Bridge zurueck.
+            context.startActivity(
+                Intent(context, VoiceResultProxyActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: Exception) {
+            Log.e(SYSTEM_VOICE_TAG, "proxy start failed", e)
+            VoiceResultBridge.onText = null
+            manager.announce("Spracherkennung konnte nicht gestartet werden")
+        }
     },
     persistentState = null,
     windowImpl = null,
     shownInEditor = false
 )
+
 
 
 @Composable

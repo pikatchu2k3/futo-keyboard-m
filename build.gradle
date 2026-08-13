@@ -201,10 +201,15 @@ android {
         versionName getVersionName()
         versionCode getVersionCode()
 
-        applicationId 'org.futo.inputmethod.latin'
+        applicationId 'org.futo.inputmethod.latin.shizuku'
         testApplicationId 'org.futo.inputmethod.latin.tests'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = false
+
+        // Futo-Shizuku: arm64 Release fuer Lieferung
+        ndk {
+            abiFilters += ["arm64-v8a"]
+        }
     }
 
     bundle {
@@ -284,7 +289,7 @@ android {
     productFlavors {
         unstable {
             dimension "buildType"
-            applicationIdSuffix ".unstable"
+            applicationIdSuffix ""
             versionNameSuffix "-unstable"
 
             buildConfigField "boolean", "IS_PLAYSTORE_BUILD", "false"
