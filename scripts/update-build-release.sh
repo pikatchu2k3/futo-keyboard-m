@@ -40,7 +40,10 @@ fail() {
 cd "$REPO_DIR"
 
 log "=== [1/5] Upstream holen ==="
-git fetch upstream master 2>&1 | tail -2
+if ! git fetch upstream master >/dev/null 2>&1; then
+  log "Fetch fehlgeschlagen (Netzwerk/Repo?) — überspringe diese Woche (still)"
+  exit 0
+fi
 
 if git merge-base --is-ancestor upstream/master HEAD 2>/dev/null; then
   log "Kein neues Update (upstream ist in HEAD enthalten) -> still"
@@ -48,19 +51,21 @@ if git merge-base --is-ancestor upstream/master HEAD 2>/dev/null; then
 fi
 
 log "=== [2/5] Upstream mergen ==="
-if ! git merge upstream/master --no-edit 2>&1; then
+if ! git merge upstream/master --no-edit >&2; then
   fail "MERGE-KONFLIKT in $REPO_DIR — Reparatur-Agent übernimmt"
 fi
 
 log "=== [3/5] Build ($GRADLE_TASK) ==="
-if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25; then
+if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25 >&2; then
   fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent übernimmt"
 fi
 APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
 [ -n "$APK" ] && [ -f "$APK" ] || fail "APK nicht gefunden"
 
 log "=== [4/5] Push zum Fork ==="
-git push origin master 2>&1 | tail -2
+if ! git push origin master >&2; then
+  fail "PUSH FEHLGESCHLAGEN zum Fork — Reparatur-Agent übernimmt"
+fi
 
 log "=== [5/5] Release erstellen ==="
 UPSTREAM_HASH=$(git log -1 --format=%h upstream/master)
