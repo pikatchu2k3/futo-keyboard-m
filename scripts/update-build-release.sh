@@ -9,7 +9,6 @@ set -euo pipefail
 REPO_DIR="/mnt/wd_nvme/futo-keyboard-m"
 OWNER="pikatchu2k3"
 REPO="futo-keyboard-m"
-APK="build/outputs/apk/unstable/release/futo-shizuku-unstable-release.apk"
 GRADLE_TASK="assembleUnstableRelease"
 
 GITHUB_TOKEN="${GITHUB_TOKEN:-$(grep '^GITHUB_TOKEN=' ~/.hermes/.env | cut -d= -f2)}"
@@ -40,7 +39,8 @@ if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25; then
   echo "!!! BUILD FEHLGESCHLAGEN !!!"
   exit 1
 fi
-[ -f "$APK" ] || { echo "!!! APK nicht gefunden: $APK !!!"; exit 1; }
+APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
+[ -n "$APK" ] && [ -f "$APK" ] || { echo "!!! APK nicht gefunden !!!"; exit 1; }
 
 echo "=== [4/5] Push zum Fork ==="
 git push origin master 2>&1 | tail -2
