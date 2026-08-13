@@ -23,17 +23,10 @@ export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m"
 
 log() { echo "$*" >&2; }
 
-# Fehlerbehandlung: melden + Reparatur-Agent triggern
+# Fehlerbehandlung: Fehlermeldung in Marker-Datei schreiben (Repair-Job liest sie 15 Min später)
 fail() {
   echo "!!! $* !!!"
-  REPAIR_JOB_ID=""
-  [ -f "$REPAIR_JOB_ID_FILE" ] && REPAIR_JOB_ID=$(cat "$REPAIR_JOB_ID_FILE")
-  if [ -n "$REPAIR_JOB_ID" ] && command -v hermes >/dev/null 2>&1; then
-    echo "--> Reparatur-Agent wird gestartet (Job $REPAIR_JOB_ID)..."
-    hermes cron run "$REPAIR_JOB_ID" 2>&1 | tail -3 || true
-  else
-    echo "--> Reparatur-Agent NICHT gestartet (Job-ID oder hermes CLI fehlt)"
-  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S') — $*" > /home/mini/.hermes/futo-last-error.txt
   exit 1
 }
 
@@ -109,5 +102,6 @@ curl -s -X POST \
 
 log "Release fertig: https://github.com/$OWNER/$REPO/releases/tag/$TAG"
 log "APK: $(basename "$APK") | ${APK_SIZE} Bytes | MD5 ${MD5}"
-# stiller Erfolg: kein stdout -> keine Signal-Meldung (Obtainium informiert den Nutzer)
+# Erfolg: Fehler-Marker entfernen (falls vorhanden) + stiller Erfolg (kein stdout -> keine Signal-Meldung)
+rm -f /home/mini/.hermes/futo-last-error.txt
 exit 0
