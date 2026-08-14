@@ -12,6 +12,7 @@ import android.speech.RecognitionService
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import android.view.inputmethod.InputConnection
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,6 +45,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import org.futo.inputmethod.latin.LatinIME
 import org.futo.inputmethod.latin.MicPermissionActivity
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.uix.ANIMATE_BUBBLE
@@ -65,6 +67,7 @@ import org.futo.inputmethod.latin.uix.getSetting
 import org.futo.inputmethod.latin.uix.setSetting
 import org.futo.inputmethod.latin.uix.settings.SettingsActivity
 import org.futo.inputmethod.latin.uix.utils.ModelOutputSanitizer
+import org.futo.inputmethod.latin.uix.utils.TextContext
 import org.futo.inputmethod.latin.xlm.UserDictionaryObserver
 import org.futo.inputmethod.updates.openURI
 import org.futo.voiceinput.shared.ModelDoesNotExistException
@@ -119,15 +122,11 @@ val SystemVoiceInputAction = Action(
             return@Action
         }
 
-        val transaction = manager.createInputTransaction()
         VoiceResultBridge.onText = { text ->
             try {
-                // Frische Transaction ZUM Commit-Zeitpunkt: nach dem Popup ist der Fokus
-                // zurueck im Feld und nur die aktuelle Connection kann committen.
-                val t = manager.createInputTransaction()
-                val sanitized = ModelOutputSanitizer.sanitize(text, t.textContext)
-                t.commit(sanitized)
-                manager.announce(text)
+                // Robuster Commit mit Retry: nach dem Popup muss der Fokus erst zurueck
+                // ins Feld wandern, bevor die InputConnection wieder aktiv ist.
+                commitVoiceResultWithRetry(manager, text)
             } catch (e: Exception) {
                 Log.w(SYSTEM_VOICE_TAG, "commit failed", e)
             } finally {
@@ -152,6 +151,128 @@ val SystemVoiceInputAction = Action(
     windowImpl = null,
     shownInEditor = false
 )
+
+/**
+ * Committet das Spracherkennungs-Ergebnis robust ins aktive Textfeld.
+ *
+ * Hintergrund: Nach dem RECOGNIZE_SPEECH-Popup muss der Fokus erst zurueck ins Feld
+ * wandern, bevor die InputConnection wieder aktiv ist. In nativen Apps (Signal) reichen
+ * dafuer ~500 ms, in WebView-Feldern (Browser, Amazon-Suche) dauert das deutlich laenger —
+ * ein zu frueher commitText geht an eine tote/stale Connection und wird STILL verworfen
+ * (kein Fehler, kein Text). Deshalb: Retry-Schleife mit Verifikation ueber getTextBeforeCursor.
+ * Abbruchkriterium Doppel-Commit: Vor jedem Commit pruefen, ob der Text schon im Feld steht.
+ */
+private fun commitVoiceResultWithRetry(manager: KeyboardManagerForAction, rawText: String) {
+    val handler = Handler(Looper.getMainLooper())
+    val maxAttempts = 10
+    val maxCommits = 5
+    val delayFirstMs = 150L
+    val delayRetryMs = 250L
+    val verifyDelayMs = 120L
+    var attempt = 0
+    var commitCalls = 0
+    var lastCommitIC: InputConnection? = null
+
+    fun rawIC(): InputConnection? =
+        (manager.getContext() as? LatinIME)?.currentInputConnection
+
+    lateinit var attemptOnce: () -> Unit
+
+    fun scheduleNext(delayMs: Long) {
+        handler.postDelayed({ attemptOnce() }, delayMs)
+    }
+
+    fun scheduleVerify(sanitized: String, tag: String) {
+        handler.postDelayed({
+            val check = try { rawIC()?.getTextBeforeCursor(512, 0)?.toString().orEmpty() }
+                catch (e: Exception) { "" }
+            if (check.contains(sanitized)) {
+                Log.i(SYSTEM_VOICE_TAG, "verified ($tag)")
+                manager.announce(rawText)
+            } else {
+                Log.w(SYSTEM_VOICE_TAG, "not verified ($tag), retrying")
+                scheduleNext(delayRetryMs)
+            }
+        }, verifyDelayMs)
+    }
+
+    attemptOnce = lambda@{
+        attempt++
+        if (attempt > maxAttempts) {
+            Log.w(SYSTEM_VOICE_TAG, "commit failed after $maxAttempts attempts (ic=${rawIC() != null})")
+            manager.announce("Spracherkennung: Text konnte nicht eingefügt werden")
+            return@lambda
+        }
+
+        // KEIN createInputTransaction() hier! Das wirft im Unstable-Build (throwIfDebug +
+        // FLAVOR=unstable) eine IllegalStateException, wenn der IME nach dem Popup noch
+        // nicht wieder im Input-Zustand ist (inInput=false) — genau in der Retry-Phase.
+        // Der textContext (nur fuer Sanitize) wird deshalb direkt aus der rohen Connection
+        // gebaut; der Commit laeuft ebenfalls direkt auf ihr (Boolean verwertbar, kein Wrapper).
+        val ic = rawIC()
+        val before = try { ic?.getTextBeforeCursor(512, 0)?.toString() } catch (e: Exception) { null }
+        val after = try { ic?.getTextAfterCursor(512, 0)?.toString() } catch (e: Exception) { null }
+        val sanitized = ModelOutputSanitizer.sanitize(rawText, TextContext(before, after))
+
+        if (sanitized.isBlank()) return@lambda
+
+        if (ic == null) {
+            Log.w(SYSTEM_VOICE_TAG, "no input connection yet (attempt $attempt)")
+            scheduleNext(delayRetryMs)
+            return@lambda
+        }
+
+        // Text evtl. schon von einem frueheren Versuch angekommen? (Schutz vor Doppel-Commit)
+        val existing = before ?: ""
+        if (existing.contains(sanitized)) {
+            Log.i(SYSTEM_VOICE_TAG, "text already present, commit not needed")
+            manager.announce(rawText)
+            return@lambda
+        }
+
+        // Commit-Cap (Sicherheitsnetz, falls die Instanz-Heuristik unten versagt).
+        if (commitCalls >= maxCommits) {
+            Log.w(SYSTEM_VOICE_TAG, "commit cap reached, only verifying now")
+            scheduleVerify(sanitized, "cap")
+            return@lambda
+        }
+
+        // Instanz-Heuristik: Nur auf einer NEUEN InputConnection committen. WebViews
+        // (Chromium) erzeugen nach dem Resume eine NEUE Connection-Instanz — die alte
+        // war tot, der Commit wurde verworfen, ein neuer Versuch ist gerechtfertigt.
+        // Gleiche Instanz wie beim letzten Commit = Text ist entweder schon drin
+        // (blinde Verifikation) oder die Connection ist unheilbar tot — in beiden
+        // Faellen wuerde ein erneuter Commit nur schaden (Doppel-Text).
+        if (commitCalls > 0 && ic === lastCommitIC) {
+            Log.w(SYSTEM_VOICE_TAG, "same connection as last commit, verifying only")
+            scheduleVerify(sanitized, "same-ic")
+            return@lambda
+        }
+
+        commitCalls++
+        lastCommitIC = ic
+        val ok = try {
+            ic.beginBatchEdit()
+            val r = ic.commitText(sanitized, 1)
+            ic.endBatchEdit()
+            r
+        } catch (e: Exception) {
+            Log.w(SYSTEM_VOICE_TAG, "commit attempt $attempt failed", e)
+            false
+        }
+
+        if (!ok) {
+            Log.w(SYSTEM_VOICE_TAG, "commitText returned false (attempt $attempt), retrying")
+            scheduleNext(delayRetryMs)
+            return@lambda
+        }
+
+        // Verifikation: kurz warten, dann pruefen ob der Text wirklich im Feld steht.
+        scheduleVerify(sanitized, "attempt $attempt")
+    }
+
+    scheduleNext(delayFirstMs)
+}
 
 
 
