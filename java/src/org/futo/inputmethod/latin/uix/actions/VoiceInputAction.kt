@@ -101,6 +101,11 @@ private const val SYSTEM_VOICE_TAG = "FutoShizukuVoice"
 /** Bruecke zwischen der Proxy-Activity und dem Mic-Key-Action. */
 object VoiceResultBridge {
     var onText: ((String) -> Unit)? = null
+
+    /** Generations-Zaehler gegen verwaiste Retry-Ketten: wird bei jedem Mic-Druck
+     *  erhoeht; eine alte Retry-Kette (z.B. wenn der User schnell neu diktiert)
+     *  erkennt am Mismatch, dass sie veraltet ist, und stoppt sofort. */
+    var generation = 0
 }
 
 val SystemVoiceInputAction = Action(
@@ -122,11 +127,13 @@ val SystemVoiceInputAction = Action(
             return@Action
         }
 
+        VoiceResultBridge.generation++
+        val myGeneration = VoiceResultBridge.generation
         VoiceResultBridge.onText = { text ->
             try {
                 // Robuster Commit mit Retry: nach dem Popup muss der Fokus erst zurueck
                 // ins Feld wandern, bevor die InputConnection wieder aktiv ist.
-                commitVoiceResultWithRetry(manager, text)
+                commitVoiceResultWithRetry(manager, text, myGeneration)
             } catch (e: Exception) {
                 Log.w(SYSTEM_VOICE_TAG, "commit failed", e)
             } finally {
@@ -162,16 +169,22 @@ val SystemVoiceInputAction = Action(
  * (kein Fehler, kein Text). Deshalb: Retry-Schleife mit Verifikation ueber getTextBeforeCursor.
  * Abbruchkriterium Doppel-Commit: Vor jedem Commit pruefen, ob der Text schon im Feld steht.
  */
-private fun commitVoiceResultWithRetry(manager: KeyboardManagerForAction, rawText: String) {
+private fun commitVoiceResultWithRetry(
+    manager: KeyboardManagerForAction,
+    rawText: String,
+    expectedGen: Int
+) {
     val handler = Handler(Looper.getMainLooper())
-    val maxAttempts = 10
+    val maxAttempts = 12
     val maxCommits = 5
     val delayFirstMs = 150L
     val delayRetryMs = 250L
-    val verifyDelayMs = 120L
+    val verifyDelayMs = 150L
     var attempt = 0
     var commitCalls = 0
     var lastCommitIC: InputConnection? = null
+
+    fun isStale(): Boolean = VoiceResultBridge.generation != expectedGen
 
     fun rawIC(): InputConnection? =
         (manager.getContext() as? LatinIME)?.currentInputConnection
@@ -184,6 +197,10 @@ private fun commitVoiceResultWithRetry(manager: KeyboardManagerForAction, rawTex
 
     fun scheduleVerify(sanitized: String, tag: String) {
         handler.postDelayed({
+            if (isStale()) {
+                Log.i(SYSTEM_VOICE_TAG, "verify skipped, chain stale ($tag)")
+                return@postDelayed
+            }
             val check = try { rawIC()?.getTextBeforeCursor(512, 0)?.toString().orEmpty() }
                 catch (e: Exception) { "" }
             if (check.contains(sanitized)) {
@@ -197,6 +214,10 @@ private fun commitVoiceResultWithRetry(manager: KeyboardManagerForAction, rawTex
     }
 
     attemptOnce = lambda@{
+        if (isStale()) {
+            Log.i(SYSTEM_VOICE_TAG, "stale retry chain aborted (gen mismatch)")
+            return@lambda
+        }
         attempt++
         if (attempt > maxAttempts) {
             Log.w(SYSTEM_VOICE_TAG, "commit failed after $maxAttempts attempts (ic=${rawIC() != null})")
@@ -253,9 +274,13 @@ private fun commitVoiceResultWithRetry(manager: KeyboardManagerForAction, rawTex
         lastCommitIC = ic
         val ok = try {
             ic.beginBatchEdit()
-            val r = ic.commitText(sanitized, 1)
-            ic.endBatchEdit()
-            r
+            try {
+                ic.commitText(sanitized, 1)
+            } finally {
+                // Auch bei Exception (z.B. DeadObjectException bei IPC-Bruch) den
+                // Batch immer schliessen — sonst bleibt die Connection im Batch-Modus.
+                ic.endBatchEdit()
+            }
         } catch (e: Exception) {
             Log.w(SYSTEM_VOICE_TAG, "commit attempt $attempt failed", e)
             false
