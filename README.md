@@ -1,5 +1,7 @@
 # FUTO Keyboard
 
+> **Futo Voice Mod** — FUTO Keyboard fork adding external offline speech recognition via RECOGNIZE_SPEECH popup — no mic permission, no system IME switch, no Shizuku/ADB. Auto-syncs upstream + builds + releases.
+
 The goal is to make a good modern keyboard that stays offline and doesn't spy on you. This keyboard is a fork of [LatinIME, The Android Open-Source Keyboard](https://android.googlesource.com/platform/packages/inputmethods/LatinIME), with significant changes made to it.
 
 Check out the [FUTO Keyboard website](https://keyboard.futo.tech/) for downloads and more information.
