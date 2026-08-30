@@ -8,6 +8,11 @@ Check out the [FUTO Keyboard website](https://keyboard.futo.tech/) for downloads
 
 The code is licensed under the [FUTO Source First License 1.1](LICENSE.md).
 
+## Changelog
+
+### v2026.08.30
+- 🐛 **Fixed:** Text über den integrierten Zwischenablage-Manager (QuickClip / Clipboard-Verlauf) einfügen und dann einmal **Backspace** drücken löschte vorher den kompletten eingefügten Text. Jetzt wird nur noch das letzte Zeichen gelöscht (wie bei normalem Einfügen) — der Clipboard-Text wird direkt per `commitText` eingefügt statt über den `mEnteredText`-Mehrzeichen-Pfad (des `mBackspaceDeletesInsertedText`-Mechanismus für Smiley-/`.com`-Tasten).
+
 ## Issue tracking and contributing
 
 Please check the GitHub repository to report issues: [https://github.com/futo-org/android-keyboard/](https://github.com/futo-org/android-keyboard/)
