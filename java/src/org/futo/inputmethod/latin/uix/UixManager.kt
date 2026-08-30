@@ -286,6 +286,10 @@ class UixActionKeyboardManager(val uixManager: UixManager, val latinIME: LatinIM
         }
     }
 
+    override fun typeTextCommitted(v: String) {
+        latinIME.getBaseInputConnection()?.commitText(v, 1)
+    }
+
     override fun typeTextSurroundedByWhitespace(v: String) {
         if(latinIME.isInputConnectionOverridden) {
             latinIME.getBaseInputConnection()?.commitText(v, 1)

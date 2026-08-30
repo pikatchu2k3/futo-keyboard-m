@@ -59,6 +59,10 @@ interface KeyboardManagerForAction {
     fun createInputTransaction(): ActionInputTransaction
 
     fun typeText(v: String)
+    /** Commit text directly (like a normal paste) so it is NOT tracked as multi-char input (mEnteredText).
+     *  Fix Futo Keyboard M: Clipboard-Insert (QuickClip/Verlauf) löschte beim Backspace den ganzen Text,
+     *  weil typeText() via onTextInput mEnteredText=gesamterText setzte und mBackspaceDeletesInsertedText griff. */
+    fun typeTextCommitted(v: String)
     fun typeTextSurroundedByWhitespace(v: String)
     fun typeUri(uri: Uri, mimeTypes: List<String>, ignoreConnectionOverride: Boolean = false): Boolean
     fun appSupportsImageInsertion(schema: String, ignoreConnectionOverride: Boolean): Boolean

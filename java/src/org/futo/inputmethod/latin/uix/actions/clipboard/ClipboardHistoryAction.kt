@@ -1257,7 +1257,7 @@ val ClipboardHistoryAction = Action(
                                     modifier = Modifier.animateItem(),
                                     clipboardEntry = entry, onPaste = {
                                         if(it.text != null) {
-                                            manager.typeText(it.text)
+                                            manager.typeTextCommitted(it.text)
                                         } else if(it.backingFile != null && it.mimeTypes.isNotEmpty()) {
                                             val request = ClipboardProviderState.addRequest(
                                                 ClipboardPasteRequest(
