@@ -105,7 +105,8 @@ android {
     buildFeatures {
         compose true
         viewBinding true
-        mlModelBinding true
+        // B1-Patch nutzt externe Erkennung; kein echtes .tflite unter src/main/ml -> kein ML-Binding noetig
+        mlModelBinding false
     }
 }
 
