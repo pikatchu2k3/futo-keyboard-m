@@ -49,6 +49,12 @@ if ! git merge upstream/master --no-edit >&2; then
 fi
 
 log "=== [3/5] Build ($GRADLE_TASK) ==="
+# WICHTIG: Release-Tag VOR dem Build setzen und als VERSION_NAME exportieren,
+# sonst faellt getVersionName() auf git describe zurueck (Version des VORHERIGEN Tags)
+# und Obtainium bietet den Fix endlos als Update an (Tag != eingebrannter versionName).
+TAG="v$(date +%Y.%m.%d)"
+export VERSION_NAME="$TAG"
+export VERSION_CODE="$(git rev-list --first-parent --count master 2>/dev/null || echo 0)"
 if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25 >&2; then
   fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent übernimmt"
 fi
@@ -69,7 +75,6 @@ fi
 log "=== [5/5] Release erstellen ==="
 UPSTREAM_HASH=$(git log -1 --format=%h upstream/master)
 UPSTREAM_DATE=$(git log -1 --format=%cs upstream/master)
-TAG="v$(date +%Y.%m.%d)"
 BODY="Automatischer Build von **FUTO Keyboard** (Upstream \`${UPSTREAM_HASH}\` vom ${UPSTREAM_DATE}) + B1-Patch: externe Spracherkennung über RECOGNIZE_SPEECH-Popup.
 
 Installation: Obtainium → Add App → GitHub Releases → \`https://github.com/${OWNER}/${REPO}\`"
@@ -82,7 +87,7 @@ code=""
 for suffix in "" "-2" "-3" "-4" "-5"; do
   tag="${TAG}${suffix}"
   resp=$(curl -s -w '\n%{http_code}' -X POST \
-    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     -H "Content-Type: application/json" \
     -d "{\"tag_name\":\"$tag\",\"name\":\"Futo Keyboard M $tag\",\"body\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$BODY")}" \
@@ -100,7 +105,7 @@ RELEASE_ID=$(echo "$release_json" | python3 -c "import json,sys; print(json.load
 
 log "--- APK hochladen ---"
 curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @"$APK" \
   "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RELEASE_ID/assets?name=$(basename "$APK")" \
