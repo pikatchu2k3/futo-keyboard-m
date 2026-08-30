@@ -56,8 +56,14 @@ APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
 [ -n "$APK" ] && [ -f "$APK" ] || fail "APK nicht gefunden"
 
 log "=== [4/5] Push zum Fork ==="
+# Fork-Divergenz abfangen: falls origin/master Commits hat, die lokal fehlen (z.B. Fork-Level-Commits,
+# wie rename/README vom 17.08.), schlaegt 'push' sonst mit 'fetch first' fehl und killt den Release-Lauf.
+git fetch origin master >/dev/null 2>&1 || true
+if ! git rebase --rebase-merges origin/master >&2; then
+  fail "REBASE auf origin/master fehlgeschlagen — Reparatur-Agent uebernimmt"
+fi
 if ! git push origin master >&2; then
-  fail "PUSH FEHLGESCHLAGEN zum Fork — Reparatur-Agent übernimmt"
+  fail "PUSH FEHLGESCHLAGEN zum Fork — Reparatur-Agent uebernimmt"
 fi
 
 log "=== [5/5] Release erstellen ==="
