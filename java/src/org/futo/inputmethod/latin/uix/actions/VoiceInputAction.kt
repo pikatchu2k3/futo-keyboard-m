@@ -244,8 +244,12 @@ private fun commitVoiceResultWithRetry(
         }
 
         // Text evtl. schon von einem frueheren Versuch angekommen? (Schutz vor Doppel-Commit)
+        // WICHTIG: nur ab dem ZWEITEN Commit-Versuch pruefen. Beim Erstversuch wurde noch
+        // nichts eingefuegt — steht der Text aber zufaellig schon im Feld (z.B. ein einzelnes
+        // Wort wie "ja" weiter vorn im Satz), unterdrueckt der Vergleich das Einfuegen
+        // faelschlich und der Nutzer bekommt gar keine Rueckmeldung.
         val existing = before ?: ""
-        if (existing.contains(sanitized)) {
+        if (commitCalls > 0 && existing.contains(sanitized)) {
             Log.i(SYSTEM_VOICE_TAG, "text already present, commit not needed")
             manager.announce(rawText)
             return@lambda
