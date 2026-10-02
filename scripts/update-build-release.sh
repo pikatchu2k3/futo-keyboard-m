@@ -62,8 +62,12 @@ if ! git fetch upstream master >/dev/null 2>&1; then
 fi
 
 if git merge-base --is-ancestor upstream/master HEAD 2>/dev/null; then
-  log "Kein neues Update (upstream ist in HEAD enthalten) -> still"
-  exit 0
+  if [ "${FORCE:-0}" = "1" ]; then
+    log "Kein neues Upstream-Commit, aber FORCE=1 -> baue und veroeffentliche trotzdem"
+  else
+    log "Kein neues Update (upstream ist in HEAD enthalten) -> still"
+    exit 0
+  fi
 fi
 
 log "=== [2/5] Upstream mergen ==="
