@@ -14,8 +14,9 @@ OWNER="pikatchu2k3"
 REPO="futo-keyboard-m"
 GRADLE_TASK="assembleUnstableRelease"
 REPAIR_JOB_ID_FILE="/home/mini/.hermes/futo-repair-job.id"
+ERROR_MARKER="/home/mini/.hermes/futo-last-error.txt"
+AAPT2="$(ls /opt/android-sdk/build-tools/*/aapt2 2>/dev/null | sort -V | tail -1 || true)"
 
-GITHUB_TOKEN="${GITHUB_TOKEN:-$(grep '^GITHUB_TOKEN=' ~/.hermes/.env | cut -d= -f2)}"
 export ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 export JAVA_HOME="${JAVA_HOME:-/opt/jdk-21.0.6+7}"
 export PATH="$JAVA_HOME/bin:$PATH"
@@ -23,14 +24,36 @@ export GRADLE_OPTS="-Dorg.gradle.jvmargs=-Xmx4096m"
 
 log() { echo "$*" >&2; }
 
-# Fehlerbehandlung: Fehlermeldung in Marker-Datei schreiben (Repair-Job liest sie 15 Min später)
+# Fehlerbehandlung: Fehlermeldung in Marker-Datei schreiben (Repair-Job liest sie 15 Min später).
+# Haengt das Repo nach einem MERGE-KONFLIKT fest, wird der Merge zusaetzlich abgebrochen und die
+# Konfliktdateien landen in der Marker-Datei — sonst scheitert jeder weitere Lauf sofort wieder
+# am offenen Merge und der Repair-Job findet keinen sauberen Ausgangszustand vor.
 fail() {
   echo "!!! $* !!!"
-  echo "$(date '+%Y-%m-%d %H:%M:%S') — $*" > /home/mini/.hermes/futo-last-error.txt
+  if [ -f "$REPO_DIR/.git/MERGE_HEAD" ]; then
+    CONFLICTS="$(git -C "$REPO_DIR" diff --name-only --diff-filter=U | tr '\n' ' ')"
+    {
+      echo "$(date '+%Y-%m-%d %H:%M:%S') — $*"
+      echo "Merge-Konflikt in: ${CONFLICTS:-<unbekannt>}"
+      echo "Der Merge wurde abgebrochen (Repo wieder auf dem letzten Commit)."
+    } > "$ERROR_MARKER"
+    git -C "$REPO_DIR" merge --abort >/dev/null 2>&1 || true
+  else
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — $*" > "$ERROR_MARKER"
+  fi
   exit 1
 }
 
 cd "$REPO_DIR"
+
+# Token aus der Umgebung, sonst aus ~/.hermes/.env. Bewusst NICHT als Zuweisung mit
+# fehlschlagendem grep: unter "set -euo pipefail" beendet das Skript sonst VOR fail(),
+# also ohne Marker-Datei — der Repair-Job wuerde den Fehler nicht sehen.
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  GITHUB_TOKEN="$(grep '^GITHUB_TOKEN=' "$HOME/.hermes/.env" 2>/dev/null | cut -d= -f2- || true)"
+fi
+[ -n "${GITHUB_TOKEN:-}" ] || fail "GITHUB_TOKEN fehlt (weder in der Umgebung noch in $HOME/.hermes/.env)"
+export GITHUB_TOKEN
 
 log "=== [1/5] Upstream holen ==="
 if ! git fetch upstream master >/dev/null 2>&1; then
@@ -48,18 +71,56 @@ if ! git merge upstream/master --no-edit >&2; then
   fail "MERGE-KONFLIKT in $REPO_DIR — Reparatur-Agent übernimmt"
 fi
 
-log "=== [3/5] Build ($GRADLE_TASK) ==="
-# WICHTIG: Release-Tag VOR dem Build setzen und als VERSION_NAME exportieren,
-# sonst faellt getVersionName() auf git describe zurueck (Version des VORHERIGEN Tags)
-# und Obtainium bietet den Fix endlos als Update an (Tag != eingebrannter versionName).
-TAG="v$(date +%Y.%m.%d)"
+log "=== [3/5] Release-Tag bestimmen (VOR dem Build) ==="
+# Der Tag muss VOR dem Build feststehen: getVersionName() faellt sonst auf git describe zurueck
+# (Version des VORHERIGEN Tags), der ins APK eingebrannte versionName passt dann nicht mehr zum
+# Release-Tag -> Obtainium bietet das Update endlos an oder gar nicht.
+# Ist der heutige Tag schon vergeben, wird der naechste freie Tag genommen. KEIN "-2"-Suffix:
+# das ist laut SemVer eine Pre-Release und damit NIEDRIGER als der vorhandene Tag -> das Handy
+# ignoriert das Update komplett (live erlebt 30.08.2026).
+REMOTE_TAGS="$(git ls-remote --tags origin 2>/dev/null)" || fail "Tag-Liste (git ls-remote --tags origin) nicht abrufbar"
+EXISTING_DATES="$(printf '%s\n' "$REMOTE_TAGS" \
+  | sed -n 's#.*refs/tags/v\([0-9][0-9][0-9][0-9]\)\.\([0-9][0-9]\)\.\([0-9][0-9]\)$#\1-\2-\3#p' \
+  | sort -u)"
+NEWEST_DATE="$(printf '%s\n' "$EXISTING_DATES" | tail -1)"
+# Startpunkt: heute — liegt der neueste vorhandene Tag in der Zukunft (z.B. weil ein
+# Same-Day-Fix auf den Folgetag gelegt wurde), startet die Suche einen Tag danach.
+START_ISO="$(date +%Y-%m-%d)"
+if [ -n "$NEWEST_DATE" ] && [[ "$NEWEST_DATE" > "$START_ISO" ]]; then
+  START_ISO="$(date -d "$NEWEST_DATE +1 day" +%Y-%m-%d)"
+fi
+TAG=""
+for offset in 0 1 2 3 4 5 6 7; do
+  iso="$(date -d "$START_ISO +${offset} day" +%Y-%m-%d)"
+  candidate="v${iso//-/.}"
+  if ! printf '%s\n' "$REMOTE_TAGS" | grep -q "refs/tags/${candidate}$"; then
+    TAG="$candidate"
+    break
+  fi
+done
+[ -n "$TAG" ] || fail "kein freier Release-Tag in den naechsten 8 Tagen gefunden"
 export VERSION_NAME="$TAG"
 export VERSION_CODE="$(git rev-list --first-parent --count master 2>/dev/null || echo 0)"
+log "Release-Tag: $TAG (VERSION_NAME=$VERSION_NAME, VERSION_CODE=$VERSION_CODE)"
+
+log "=== [3/5] Build ($GRADLE_TASK) ==="
 if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25 >&2; then
   fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent übernimmt"
 fi
 APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
 [ -n "$APK" ] && [ -f "$APK" ] || fail "APK nicht gefunden"
+
+# Kontrolle: der eingebrannte versionName muss den Release-Tag enthalten, sonst laeuft die
+# Obtainium-Aktualisierung ins Leere. Kein aapt2 gefunden -> nur Hinweis, kein Abbruch.
+if [ -n "$AAPT2" ]; then
+  APK_VERSION="$("$AAPT2" dump badging "$APK" 2>/dev/null | sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p")" || true
+  case "$APK_VERSION" in
+    "$TAG"*) log "versionName-Kontrolle OK: $APK_VERSION" ;;
+    *) fail "APK-versionName '${APK_VERSION:-<leer>}' passt nicht zum Tag '$TAG' — Release abgebrochen" ;;
+  esac
+else
+  log "WARNUNG: kein aapt2 gefunden, versionName-Kontrolle uebersprungen"
+fi
 
 log "=== [4/5] Push zum Fork ==="
 # Fork-Divergenz abfangen: falls origin/master Commits hat, die lokal fehlen (z.B. Fork-Level-Commits,
@@ -81,38 +142,37 @@ Installation: Obtainium → Add App → GitHub Releases → \`https://github.com
 APK_SIZE=$(stat -c%s "$APK")
 MD5=$(md5sum "$APK" | cut -d' ' -f1)
 
-# Release anlegen (bei Tag-Kollision: Suffix anhängen)
-release_json=""
-code=""
-for suffix in "" "-2" "-3" "-4" "-5"; do
-  tag="${TAG}${suffix}"
-  resp=$(curl -s -w '\n%{http_code}' -X POST \
+# Release anlegen. Der Tag steht schon fest (== eingebrannter versionName), eine Kollision ist vor
+# dem Build ausgeschlossen — deshalb KEIN Suffix-Fallback mehr: ein 422 hier ist ein echter Fehler
+# und soll fail() ausloesen, statt still einen Tag zu veroeffentlichen, der nicht im APK steht.
+log "--- Release $TAG anlegen ---"
+resp=$(curl -s -w '\n%{http_code}' -X POST \
     -H "Authorization: Bearer ${GITHUB_TOKEN}" \
     -H "Accept: application/vnd.github+json" \
     -H "Content-Type: application/json" \
-    -d "{\"tag_name\":\"$tag\",\"name\":\"Futo Keyboard M $tag\",\"body\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$BODY")}" \
+    -d "{\"tag_name\":\"$TAG\",\"name\":\"Futo Keyboard M $TAG\",\"body\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$BODY")}" \
     "https://api.github.com/repos/$OWNER/$REPO/releases")
-  code=$(echo "$resp" | tail -1)
-  release_json=$(echo "$resp" | head -n -1)
-  if [ "$code" = "201" ]; then
-    TAG="$tag"
-    break
-  fi
-done
-[ -n "$release_json" ] && [ "$code" = "201" ] || fail "Release-Erstellung fehlgeschlagen"
+code=$(printf '%s\n' "$resp" | tail -1)
+release_json=$(printf '%s\n' "$resp" | head -n -1)
+[ "$code" = "201" ] || fail "Release-Erstellung fehlgeschlagen (HTTP $code): $(printf '%s' "$release_json" | head -c 300)"
 
-RELEASE_ID=$(echo "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+RELEASE_ID=$(printf '%s' "$release_json" | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
 
 log "--- APK hochladen ---"
-curl -s -X POST \
+upload_resp=$(curl -s -w '\n%{http_code}' -X POST \
   -H "Authorization: Bearer ${GITHUB_TOKEN}" \
   -H "Content-Type: application/octet-stream" \
   --data-binary @"$APK" \
-  "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RELEASE_ID/assets?name=$(basename "$APK")" \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print('Asset:', d.get('name'), d.get('size'), 'Bytes')" >&2
+  "https://uploads.github.com/repos/$OWNER/$REPO/releases/$RELEASE_ID/assets?name=$(basename "$APK")")
+upload_code=$(printf '%s\n' "$upload_resp" | tail -1)
+upload_json=$(printf '%s\n' "$upload_resp" | head -n -1)
+# Frueher stand hier "curl -s ... | python3 -c ...": bei HTTP 4xx/5xx liefert curl Exit 0, das
+# Release blieb ohne APK und das Skript meldete trotzdem Erfolg (still, exit 0).
+[ "$upload_code" = "201" ] || fail "APK-Upload fehlgeschlagen (HTTP $upload_code): $(printf '%s' "$upload_json" | head -c 300)"
+log "Asset: $(printf '%s' "$upload_json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('name'), d.get('size'), 'Bytes')" 2>/dev/null || echo 'hochgeladen')"
 
 log "Release fertig: https://github.com/$OWNER/$REPO/releases/tag/$TAG"
 log "APK: $(basename "$APK") | ${APK_SIZE} Bytes | MD5 ${MD5}"
 # Erfolg: Fehler-Marker entfernen (falls vorhanden) + stiller Erfolg (kein stdout -> keine Signal-Meldung)
-rm -f /home/mini/.hermes/futo-last-error.txt
+rm -f "$ERROR_MARKER"
 exit 0
