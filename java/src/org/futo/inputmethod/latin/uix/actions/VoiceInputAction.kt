@@ -47,6 +47,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.futo.inputmethod.latin.LatinIME
 import org.futo.inputmethod.latin.MicPermissionActivity
+import org.futo.inputmethod.latin.ATLCompat
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.uix.ANIMATE_BUBBLE
 import org.futo.inputmethod.latin.uix.AUDIO_FOCUS
@@ -331,7 +332,7 @@ fun NoModelInstalled(locale: Locale) {
 
 class VoiceInputPersistentState(val manager: KeyboardManagerForAction) : PersistentActionState {
     val modelManager = ModelManager(manager.getContext())
-    val soundPlayer = SoundPlayer(manager.getContext())
+    val soundPlayer: SoundPlayer? = if(ATLCompat.IsATL) null else SoundPlayer(manager.getContext())
     val userDictionaryObserver = UserDictionaryObserver(manager.getContext())
 
     override suspend fun cleanUp() {
@@ -473,7 +474,7 @@ private class VoiceInputActionWindow(
     override fun cancelled() {
         if (!wasFinished) {
             if (shouldPlaySounds && !cancelPlayed) {
-                state.soundPlayer.playCancelSound()
+                state.soundPlayer?.playCancelSound()
                 cancelPlayed = true
             }
             inputTransaction.cancel()
@@ -482,7 +483,7 @@ private class VoiceInputActionWindow(
 
     override fun recordingStarted(device: MicrophoneDeviceState) {
         if (shouldPlaySounds) {
-            state.soundPlayer.playStartSound()
+            state.soundPlayer?.playStartSound()
         }
 
         // Only set the setting if bluetooth is available, else it would reset the setting

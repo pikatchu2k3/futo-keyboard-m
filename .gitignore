@@ -8,4 +8,10 @@ build/
 .kotlin/
 local.properties
 *.log
+crashreporting.properties
+keystore.properties
+key.jks
+java/res/raw/mozc.data
 java/src/org/futo/inputmethod/keyboard/internal/KeyboardTextsTable.java
+
+atl/
