@@ -75,6 +75,14 @@ if ! git merge upstream/master --no-edit >&2; then
   fail "MERGE-KONFLIKT in $REPO_DIR — Reparatur-Agent übernimmt"
 fi
 
+# Submodule mitziehen: upstream aendert gelegentlich Gitlinks (z.B. java/assets/futo-swipe =
+# Swipe-Sprachmodell). Ohne Update baut Gradle still mit dem ALTEN Asset und das Release
+# enthaelt veraltete Modelle — der Merge selbst laesst den Worktree auf dem alten Commit stehen.
+log "=== [2/5] Submodule aktualisieren ==="
+if ! git submodule update --init --recursive --depth 1 >&2; then
+  fail "SUBMODULE-UPDATE fehlgeschlagen — Reparatur-Agent uebernimmt"
+fi
+
 log "=== [3/5] Release-Tag bestimmen (VOR dem Build) ==="
 # Der Tag muss VOR dem Build feststehen: getVersionName() faellt sonst auf git describe zurueck
 # (Version des VORHERIGEN Tags), der ins APK eingebrannte versionName passt dann nicht mehr zum
