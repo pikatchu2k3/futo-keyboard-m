@@ -110,6 +110,7 @@ import org.futo.inputmethod.latin.uix.getSettingBlocking
 import org.futo.inputmethod.latin.uix.getUnlockedSetting
 import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
 import org.futo.inputmethod.latin.uix.setSetting
+import org.futo.inputmethod.latin.uix.settings.DropDownPickerSettingItem
 import org.futo.inputmethod.latin.uix.settings.ScrollableList
 import org.futo.inputmethod.latin.uix.settings.SettingSlider
 import org.futo.inputmethod.latin.uix.settings.SettingToggleDataStore
@@ -124,6 +125,7 @@ import org.futo.inputmethod.latin.uix.settings.useDataStoreValue
 import org.futo.inputmethod.latin.uix.settings.userSettingToggleDataStore
 import org.futo.inputmethod.latin.uix.theme.Typography
 import java.io.File
+import java.text.Collator
 import java.security.MessageDigest
 import kotlin.math.roundToInt
 
@@ -155,6 +157,20 @@ val ClipboardHistorySaveSensitive = SettingsKey(
 val ClipboardShowPinnedOnTop = SettingsKey(
     booleanPreferencesKey("clipboard_history_show_pinned_on_top"),
     false
+)
+
+object ClipboardPinnedSortOrders {
+    /** Pinned clips keep the order chosen by the user (they can be moved manually) */
+    const val CUSTOM = 0
+    /** Pinned clips are sorted alphabetically (images come last) */
+    const val ALPHABETICAL = 1
+    /** Pinned clips are sorted by date, newest first */
+    const val NEWEST_FIRST = 2
+}
+
+val ClipboardPinnedSortOrder = SettingsKey(
+    intPreferencesKey("clipboard_history_pinned_sort_order"),
+    ClipboardPinnedSortOrders.CUSTOM
 )
 
 val ClipboardSingleColumn = SettingsKey(
@@ -248,7 +264,16 @@ object ClipboardThumbCache {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ClipboardEntryView(modifier: Modifier, clipboardEntry: ClipboardEntry, onPaste: (ClipboardEntry) -> Unit, onRemove: (ClipboardEntry) -> Unit, onPin: (ClipboardEntry) -> Unit, bitmapOverride: ImageBitmap? = null) {
+fun ClipboardEntryView(
+    modifier: Modifier,
+    clipboardEntry: ClipboardEntry,
+    onPaste: (ClipboardEntry) -> Unit,
+    onRemove: (ClipboardEntry) -> Unit,
+    onPin: (ClipboardEntry) -> Unit,
+    bitmapOverride: ImageBitmap? = null,
+    onMoveUp: ((ClipboardEntry) -> Unit)? = null,
+    onMoveDown: ((ClipboardEntry) -> Unit)? = null,
+) {
     val context = LocalContext.current
 
     val bitmap = remember(clipboardEntry) {
@@ -360,6 +385,32 @@ fun ClipboardEntryView(modifier: Modifier, clipboardEntry: ClipboardEntry, onPas
                 }
 
                 Spacer(modifier = Modifier.weight(1.0f))
+
+                if(onMoveUp != null) {
+                    IconButton(onClick = {
+                        onMoveUp(clipboardEntry)
+                    }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            painterResource(id = R.drawable.arrow_up),
+                            contentDescription = stringResource(R.string.action_clipboard_manager_move_item_up),
+                            tint = contentColorFor(color),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                if(onMoveDown != null) {
+                    IconButton(onClick = {
+                        onMoveDown(clipboardEntry)
+                    }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            painterResource(id = R.drawable.arrow_down),
+                            contentDescription = stringResource(R.string.action_clipboard_manager_move_item_down),
+                            tint = contentColorFor(color),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
 
                 IconButton(onClick = {
                     onRemove(clipboardEntry)
@@ -560,6 +611,9 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
                 it.backingFile == finalFile.name && it.pinned
             }?.pinned == true
 
+            // Keep manually ordered pinned clips where they are
+            if(isAlreadyPinned && isCustomPinnedOrder()) return
+
             clipboardHistory.removeAll { it.backingFile == finalFile.name }
 
             val newEntry = ClipboardEntry(
@@ -628,6 +682,9 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
                     val isAlreadyPinned = clipboardHistory.firstOrNull {
                         (it.text != null && it.text == text) && it.pinned
                     }?.pinned == true
+
+                    // Keep manually ordered pinned clips where they are
+                    if(isAlreadyPinned && isCustomPinnedOrder()) return
 
                     clipboardHistory.removeAll { it.text != null && it.text == text }
 
@@ -930,7 +987,15 @@ ${if(clipboardFileSwap.exists()) { clipboardFileSwap.readText() } else { "File d
         }
     }
 
+    private fun isCustomPinnedOrder(): Boolean =
+        context.getSetting(ClipboardPinnedSortOrder) == ClipboardPinnedSortOrders.CUSTOM
+
     fun onPaste(item: ClipboardEntry) {
+        // Pinned items keep their timestamp (the time they were pinned), so that sorting
+        // pinned clips by date is not affected by pasting them. Pinned items are never
+        // expired, and unpinning refreshes the timestamp anyway.
+        if(item.pinned) return
+
         val itemPos = clipboardHistory.indexOf(item).coerceAtLeast(0)
         clipboardHistory.removeAll { it == item }
         clipboardHistory.add(itemPos, item.copy(timestamp = System.currentTimeMillis()))
@@ -958,6 +1023,25 @@ ${if(clipboardFileSwap.exists()) { clipboardFileSwap.readText() } else { "File d
                 // 3. Item immediately gets deleted because it's past its expiration time
                 timestamp = System.currentTimeMillis(),
             ))
+
+        saveClipboard()
+    }
+
+    /**
+     * Moves a pinned item one step towards the top (visually) of the pinned clips, by swapping
+     * it with the neighbouring pinned item. The list is displayed in reverse order, so the
+     * visual top corresponds to the end of [clipboardHistory].
+     */
+    fun onMovePinned(item: ClipboardEntry, towardsTop: Boolean) {
+        val idx = clipboardHistory.indexOf(item)
+        if(idx < 0 || !item.pinned) return
+
+        val range = if(towardsTop) (idx + 1 until clipboardHistory.size) else (idx - 1 downTo 0)
+        val otherIdx = range.firstOrNull { clipboardHistory[it].pinned } ?: return
+
+        val other = clipboardHistory[otherIdx]
+        clipboardHistory[otherIdx] = item
+        clipboardHistory[idx] = other
 
         saveClipboard()
     }
@@ -1053,6 +1137,33 @@ val ClipboardHistoryAction = Action(
                         Icon(
                             Icons.Default.Search,
                             contentDescription = stringResource(R.string.action_clipboard_manager_search)
+                        )
+                    }
+                    IconButton(onClick = {
+                        val context = manager.getContext()
+                        val current = context.getSetting(ClipboardPinnedSortOrder)
+                        fun label(order: Int, id: Int): String =
+                            resources.getString(id).let { if(order == current) "✓ $it" else it }
+
+                        manager.requestDialog(
+                            resources.getString(R.string.action_clipboard_manager_sort_pinned_dialog),
+                            listOf(
+                                ClipboardPinnedSortOrders.CUSTOM to R.string.action_clipboard_manager_sort_pinned_custom,
+                                ClipboardPinnedSortOrders.ALPHABETICAL to R.string.action_clipboard_manager_sort_pinned_alphabetical,
+                                ClipboardPinnedSortOrders.NEWEST_FIRST to R.string.action_clipboard_manager_sort_pinned_newest_first,
+                            ).map { (order, id) ->
+                                DialogRequestItem(label(order, id)) {
+                                    manager.getLifecycleScope().launch {
+                                        context.setSetting(ClipboardPinnedSortOrder, order)
+                                    }
+                                }
+                            },
+                            {}
+                        )
+                    }) {
+                        Icon(
+                            painterResource(id = R.drawable.sort),
+                            contentDescription = stringResource(R.string.action_clipboard_manager_sort_pinned)
                         )
                     }
                     IconButton(onClick = {
@@ -1190,6 +1301,10 @@ val ClipboardHistoryAction = Action(
                         }
 
                         val showPinnedOnTop = useDataStoreValue(ClipboardShowPinnedOnTop)
+                        val pinnedSortOrder = useDataStoreValue(ClipboardPinnedSortOrder)
+                        val collator = remember { Collator.getInstance().apply { strength = Collator.SECONDARY } }
+
+                        // List in visual order (first item is shown at the top)
                         val clipboardList = run {
                             val filtered = clipboardHistoryManager.clipboardHistory.filter {
                                 !searching.value
@@ -1202,13 +1317,33 @@ val ClipboardHistoryAction = Action(
                                 }
                             }
 
-                            val sorted = when {
-                                showPinnedOnTop -> filtered.sortedBy { it.pinned }
-                                else -> filtered
-                            }
+                            // Items are stored oldest-first, but displayed newest-first
+                            val visual = filtered.asReversed()
 
-                            sorted
+                            val pinned = visual.filter { it.pinned }
+                            val unpinned = visual.filter { !it.pinned }
+
+                            when(pinnedSortOrder) {
+                                ClipboardPinnedSortOrders.ALPHABETICAL ->
+                                    pinned.sortedWith(
+                                        compareBy<ClipboardEntry> { it.text == null }
+                                            .thenComparator { a, b -> collator.compare(a.text?.trim() ?: "", b.text?.trim() ?: "") }
+                                    ) + unpinned
+
+                                ClipboardPinnedSortOrders.NEWEST_FIRST ->
+                                    pinned.sortedByDescending { it.timestamp } + unpinned
+
+                                else -> if(showPinnedOnTop) {
+                                    pinned + unpinned
+                                } else {
+                                    visual
+                                }
+                            }
                         }
+                        val canReorderPinned = pinnedSortOrder == ClipboardPinnedSortOrders.CUSTOM
+                                && !searching.value
+                        val firstPinnedIdx = clipboardList.indexOfFirst { it.pinned }
+                        val lastPinnedIdx = clipboardList.indexOfLast { it.pinned }
 
                         if(clipboardList.isEmpty() && searching.value && searchQuery.isNotEmpty() && clipboardHistoryManager.clipboardHistory.isNotEmpty()) {
                             Text(
@@ -1236,23 +1371,9 @@ val ClipboardHistoryAction = Action(
                             verticalItemSpacing = 4.dp,
                             horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            items(clipboardList.size, key = { r_i ->
-                                val i = clipboardList.size - r_i - 1
+                            items(clipboardList.size, key = { i -> i }) { i ->
                                 val entry = clipboardList[i]
-
-                                entry.text?.let {
-                                    if(it.length > 512) {
-                                        // Compose really doesn't like extremely long keys, so
-                                        // to avoid crashing we just provide a hash
-                                        it.toFNV1aHash()
-                                    } else {
-                                        it
-                                    }
-                                } ?: entry.backingFile ?: i
-                                i
-                            }) { r_i ->
-                                val i = clipboardList.size - r_i - 1
-                                val entry = clipboardList[i]
+                                val reorderable = canReorderPinned && entry.pinned
                                 ClipboardEntryView(
                                     modifier = Modifier.animateItem(),
                                     clipboardEntry = entry, onPaste = {
@@ -1306,7 +1427,16 @@ val ClipboardHistoryAction = Action(
                                     }, onPin = {
                                         clipboardHistoryManager.onTogglePin(it)
                                         manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
-                                    })
+                                    },
+                                    onMoveUp = if(reorderable && i > firstPinnedIdx) { {
+                                        clipboardHistoryManager.onMovePinned(it, towardsTop = true)
+                                        manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
+                                    } } else null,
+                                    onMoveDown = if(reorderable && i < lastPinnedIdx) { {
+                                        clipboardHistoryManager.onMovePinned(it, towardsTop = false)
+                                        manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
+                                    } } else null,
+                                )
                             }
                         }
                     }
@@ -1420,6 +1550,27 @@ val ClipboardHistoryAction = Action(
                 title = R.string.action_clipboard_manager_settings_show_pinned_above_others,
                 setting = ClipboardShowPinnedOnTop
             ).copy(visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }),
+
+            UserSetting(
+                name = R.string.action_clipboard_manager_sort_pinned,
+                component = {
+                    val setting = useDataStore(ClipboardPinnedSortOrder)
+                    val orders = mapOf(
+                        ClipboardPinnedSortOrders.CUSTOM to stringResource(R.string.action_clipboard_manager_sort_pinned_custom),
+                        ClipboardPinnedSortOrders.ALPHABETICAL to stringResource(R.string.action_clipboard_manager_sort_pinned_alphabetical),
+                        ClipboardPinnedSortOrders.NEWEST_FIRST to stringResource(R.string.action_clipboard_manager_sort_pinned_newest_first),
+                    )
+
+                    DropDownPickerSettingItem(
+                        label = stringResource(R.string.action_clipboard_manager_sort_pinned),
+                        options = orders.keys.toList(),
+                        selection = setting.value,
+                        onSet = { setting.setValue(it) },
+                        getDisplayName = { orders[it] ?: "?" },
+                    )
+                },
+                visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }
+            ),
 
             userSettingToggleDataStore(
                 title = R.string.action_clipboard_manager_settings_list_layout,
