@@ -130,6 +130,8 @@ run_build() {
       --setenv=ANDROID_HOME="$ANDROID_HOME" \
       --setenv=JAVA_HOME="$JAVA_HOME" \
       --setenv=PATH="$PATH" \
+      --setenv=VERSION_NAME="$VERSION_NAME" \
+      --setenv=VERSION_CODE="$VERSION_CODE" \
       bash -c "cd '$REPO_DIR' && ./gradlew $GRADLE_TASK"
   else
     ./gradlew "$GRADLE_TASK"
