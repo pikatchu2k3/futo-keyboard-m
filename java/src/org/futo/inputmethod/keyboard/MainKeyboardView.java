@@ -41,6 +41,7 @@ import org.futo.inputmethod.annotations.ExternallyReferenced;
 import org.futo.inputmethod.engine.StateHint;
 import org.futo.inputmethod.keyboard.internal.DrawingPreviewPlacerView;
 import org.futo.inputmethod.keyboard.internal.DrawingProxy;
+import org.futo.inputmethod.keyboard.internal.FireworksDrawingPreview;
 import org.futo.inputmethod.keyboard.internal.GestureFloatingTextDrawingPreview;
 import org.futo.inputmethod.keyboard.internal.GestureTrailsDrawingPreview;
 import org.futo.inputmethod.keyboard.internal.KeyDrawParams;
@@ -151,6 +152,10 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     private final GestureFloatingTextDrawingPreview mGestureFloatingTextDrawingPreview;
     private final GestureTrailsDrawingPreview mGestureTrailsDrawingPreview;
     private final SlidingKeyInputDrawingPreview mSlidingKeyInputDrawingPreview;
+    private final FireworksDrawingPreview mFireworksDrawingPreview;
+    private boolean mColorfulKeyPopupEnabled = false;
+    // Advances by the golden angle on every key press, giving well distributed, vivid colors
+    private float mColorfulHue = (float) (Math.random() * 360.0);
 
     // Key preview
     private final KeyPreviewDrawParams mKeyPreviewDrawParams;
@@ -260,6 +265,10 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
 
         mSlidingKeyInputDrawingPreview = new SlidingKeyInputDrawingPreview(mainKeyboardViewAttr, mDrawableProvider);
         mSlidingKeyInputDrawingPreview.setDrawingView(drawingPreviewPlacerView);
+
+        mFireworksDrawingPreview = new FireworksDrawingPreview(
+                getResources().getDisplayMetrics().density);
+        mFireworksDrawingPreview.setDrawingView(drawingPreviewPlacerView);
         mainKeyboardViewAttr.recycle();
 
         mDrawingPreviewPlacerView = drawingPreviewPlacerView;
@@ -425,6 +434,15 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     }
 
     /**
+     * Enables or disables colorful key popups with a firework effect on key press.
+     */
+    public void setColorfulKeyPopupEnabled(final boolean enabled) {
+        mColorfulKeyPopupEnabled = enabled;
+        mFireworksDrawingPreview.setPreviewEnabled(enabled);
+        if (!enabled) mFireworksDrawingPreview.onDeallocateMemory();
+    }
+
+    /**
      * Enables or disables the key preview popup animations and set animations' parameters.
      *
      * @param hasCustomAnimationParams false to use the default key preview popup animations
@@ -474,12 +492,31 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
     public void onKeyPressed(@Nonnull final Key key, final boolean withPreview) {
         key.onPressed();
         invalidateKey(key);
+
+        int colorfulColor = 0;
+        if (mColorfulKeyPopupEnabled && withPreview) {
+            mColorfulHue = (mColorfulHue + 137.508f) % 360.0f;
+            colorfulColor = Color.HSVToColor(new float[] { mColorfulHue, 0.85f, 0.95f });
+        }
+
         if (withPreview && !key.getNoKeyPreview()) {
-            showKeyPreview(key);
+            showKeyPreview(key, colorfulColor);
+        }
+
+        if (colorfulColor != 0) {
+            locatePreviewPlacerView();
+            final float burstX = key.getDrawX() + key.getDrawWidth() / 2.0f;
+            // Burst above the popup when it is shown, otherwise from the key itself
+            final boolean popupShown = mKeyPreviewDrawParams.isPopupEnabled()
+                    && !key.getNoKeyPreview();
+            final float burstY = popupShown
+                    ? key.getY() - key.getHeight() * 0.6f
+                    : key.getY() + key.getHeight() / 2.0f;
+            mFireworksDrawingPreview.burst(burstX, burstY, mColorfulHue);
         }
     }
 
-    private void showKeyPreview(@Nonnull final Key key) {
+    private void showKeyPreview(@Nonnull final Key key, final int colorfulColor) {
         final Keyboard keyboard = getKeyboard();
         if (keyboard == null) {
             return;
@@ -494,7 +531,7 @@ public final class MainKeyboardView extends KeyboardView implements DrawingProxy
         getLocationInWindow(mOriginCoords);
         mKeyPreviewChoreographer.placeAndShowKeyPreview(key, keyboard.mIconsSet, getKeyDrawParams(),
                 getWidth(), mOriginCoords, mDrawingPreviewPlacerView, isHardwareAccelerated(),
-                mDrawableProvider.getPreviewBackground(keyboard, key));
+                mDrawableProvider.getPreviewBackground(keyboard, key), colorfulColor);
     }
 
     private void dismissKeyPreviewWithoutDelay(@Nonnull final Key key) {

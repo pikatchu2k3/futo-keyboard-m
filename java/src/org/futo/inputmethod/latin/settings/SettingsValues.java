@@ -71,6 +71,7 @@ public class SettingsValues {
     public final boolean mVibrateOn;
     public final boolean mSoundOn;
     public final boolean mKeyPreviewPopupOn;
+    public final boolean mColorfulKeyPopupOn;
     public final boolean mShowsVoiceInputKey;
     public final boolean mIncludesOtherImesInLanguageSwitchList;
     public final boolean mShowsActionKey;
@@ -164,6 +165,7 @@ public class SettingsValues {
         mVibrateOn = Settings.readVibrationEnabled(prefs, res);
         mSoundOn = Settings.readKeypressSoundEnabled(prefs, res);
         mKeyPreviewPopupOn = Settings.readKeyPreviewPopupEnabled(prefs, res);
+        mColorfulKeyPopupOn = prefs.getBoolean(Settings.PREF_COLORFUL_POPUP_ON, false);
         mSlidingKeyInputPreviewEnabled = prefs.getBoolean(
                 DebugSettings.PREF_SLIDING_KEY_INPUT_PREVIEW, true);
         mShowsVoiceInputKey = true;

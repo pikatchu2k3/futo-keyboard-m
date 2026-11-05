@@ -905,6 +905,12 @@ val TypingSettingsMenu = UserSettingsMenu(
             default = {booleanResource(R.bool.config_default_key_preview_popup)}
         ),
         userSettingToggleSharedPrefs(
+            title = R.string.colorful_popup_on_keypress,
+            subtitle = R.string.colorful_popup_on_keypress_subtitle,
+            key = Settings.PREF_COLORFUL_POPUP_ON,
+            default = {false}
+        ),
+        userSettingToggleSharedPrefs(
             title = R.string.vibrate_on_keypress,
             key = Settings.PREF_VIBRATE_ON,
             default = {booleanResource(R.bool.config_default_vibration_enabled)}

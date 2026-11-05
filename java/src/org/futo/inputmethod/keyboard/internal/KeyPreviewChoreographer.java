@@ -98,10 +98,13 @@ public final class KeyPreviewChoreographer {
 
     public void placeAndShowKeyPreview(final Key key, final KeyboardIconsSet iconsSet,
                                        final KeyDrawParams drawParams, final int keyboardViewWidth, final int[] keyboardOrigin,
-                                       final ViewGroup placerView, final boolean withAnimation, KeyBackground background) {
+                                       final ViewGroup placerView, final boolean withAnimation, KeyBackground background,
+                                       final int colorfulColor) {
         final KeyPreviewView keyPreviewView = getKeyPreviewView(key, placerView);
         keyPreviewView.setBackground(background.getBackground());
         placeKeyPreview(key, keyPreviewView, iconsSet, drawParams, keyboardViewWidth, keyboardOrigin, background.getForegroundColor());
+        // Must come after placeKeyPreview, which sets the themed text color
+        keyPreviewView.setColorfulColor(colorfulColor);
         showKeyPreview(key, keyPreviewView, withAnimation);
     }
 
