@@ -116,6 +116,9 @@ import org.futo.inputmethod.latin.LatinIME
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.RichInputMethodManager
 import org.futo.inputmethod.latin.SuggestedWords
+import org.futo.inputmethod.latin.uix.actions.clipboard.ClipboardHistoryAction
+import org.futo.inputmethod.latin.uix.actions.clipboard.ClipboardHistoryEnabled
+import org.futo.inputmethod.latin.uix.actions.clipboard.ClipboardHistoryManager
 import org.futo.inputmethod.latin.SuggestedWords.SuggestedWordInfo
 import org.futo.inputmethod.latin.SupportsNavbarExtension
 import org.futo.inputmethod.latin.common.Constants
@@ -747,6 +750,14 @@ class UixManager(private val latinIME: LatinIME) {
                             else null
                     },
                     onQuickClipDismiss = { quickClipState.value = null },
+                    smartSuggestions = smartSuggestions.value,
+                    onSmartSuggestion = {
+                        keyboardManagerForAction.performHapticAndAudioFeedback(
+                            Constants.CODE_TAB,
+                            view
+                        )
+                        applySmartSuggestion(it)
+                    },
                     needToUseExpandableSuggestionUi = needToUseExpandableSuggestionUi,
                     loading = latinIME.imeManager.isImeLoading()
                 )
@@ -1294,6 +1305,7 @@ class UixManager(private val latinIME: LatinIME) {
                         expandableSuggestionCfg.value.useExpandableUi && suggestedWords.value?.size()?.equals(0) != true
                                 && mainKeyboardHidden.value == false
                                 && (quickClipState.value == null || inlineStuffHiddenByTyping.value)
+                                && smartSuggestions.value.isEmpty()
                                 && currentNotice.value == null
                                 && (inlineSuggestions.value.isEmpty() || inlineStuffHiddenByTyping.value)
                     when {
@@ -1639,6 +1651,7 @@ class UixManager(private val latinIME: LatinIME) {
         }
 
         quickClipState.value = QuickClip.getCurrentState(latinIME)
+        smartSuggestions.value = emptyList()
         floatingPreeditEditing.value = false
     }
 
@@ -1648,12 +1661,65 @@ class UixManager(private val latinIME: LatinIME) {
         isShowingActionEditor.value = false
         resizers.hideResizer()
         inlineSuggestions.value = emptyList()
+        smartSuggestions.value = emptyList()
         floatingPreeditText.value = ""
     }
 
     // Called by InputLogic on any event
     fun onInputEvent(textBlank: Boolean) {
         inlineStuffHiddenByTyping.value = textBlank == false
+        smartSuggestions.value = emptyList()
+    }
+
+    fun onInputEvent(textBlank: Boolean, textBeforeCursor: CharSequence?) {
+        inlineStuffHiddenByTyping.value = textBlank == false
+        smartSuggestions.value = computeSmartSuggestions(textBeforeCursor)
+    }
+
+    private val smartSuggestions: MutableState<List<SmartSuggestion>> = mutableStateOf(emptyList())
+
+    private fun computeSmartSuggestions(textBeforeCursor: CharSequence?): List<SmartSuggestion> {
+        if(latinIME.isInputConnectionOverridden) return emptyList()
+        val token = SmartSuggestions.currentToken(textBeforeCursor) ?: return emptyList()
+
+        val snippetsEnabled = latinIME.getSetting(TextSnippetsEnabled)
+        val commandsEnabled = latinIME.getSetting(CommandSuggestionsEnabled)
+                && token.startsWith("/")
+                && latinIME.getSetting(ClipboardHistoryEnabled)
+
+        if(!snippetsEnabled && !commandsEnabled) return emptyList()
+
+        val commands = if(commandsEnabled) {
+            (persistentStates[ClipboardHistoryAction] as? ClipboardHistoryManager)
+                ?.clipboardHistory
+                ?.filter { it.pinned && it.text != null }
+                // Newest first, as displayed in the clipboard manager
+                ?.asReversed()
+                ?.mapNotNull { it.text }
+                ?: emptyList()
+        } else emptyList()
+
+        return SmartSuggestions.compute(
+            token = token,
+            snippets = if(snippetsEnabled) TextSnippetStore.get(latinIME) else emptyList(),
+            commands = commands,
+            snippetsEnabled = snippetsEnabled,
+            commandsEnabled = commandsEnabled
+        )
+    }
+
+    private fun applySmartSuggestion(suggestion: SmartSuggestion) {
+        smartSuggestions.value = emptyList()
+
+        // Make sure the text that is going to be replaced is still what we expect, in case the
+        // cursor was moved in the meantime
+        val ic = latinIME.currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(suggestion.replaceLength, 0)?.toString()
+        if(before == null || before.length != suggestion.replaceLength
+            || before.any { it.isWhitespace() }) return
+
+        keyboardManagerForAction.backspace(suggestion.replaceLength)
+        keyboardManagerForAction.typeTextCommitted(suggestion.insertText)
     }
 
     fun updateEmojiTranslationsIfNeeded() {

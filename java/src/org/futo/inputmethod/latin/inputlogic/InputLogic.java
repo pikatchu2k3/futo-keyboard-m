@@ -2665,9 +2665,11 @@ public final class InputLogic {
     }
 
     private void updateUiInputState() {
-        final CharSequence textBeforeCursor = mConnection.getTextBeforeCursor(1, 0);
+        // A bit more context is requested so that snippet shortcuts and "/" commands typed
+        // directly before the cursor can be suggested
+        final CharSequence textBeforeCursor = mConnection.getTextBeforeCursor(64, 0);
         mImeHelper.updateUiInputState(textBeforeCursor != null
-                && textBeforeCursor.length() == 0);
+                && textBeforeCursor.length() == 0, textBeforeCursor);
     }
 
     /**

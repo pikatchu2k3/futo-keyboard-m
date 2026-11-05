@@ -107,6 +107,36 @@
     <string name="action_clipboard_manager_sort_pinned_newest_first">By date (newest first)</string>
     <string name="action_clipboard_manager_move_item_up">Move up</string>
     <string name="action_clipboard_manager_move_item_down">Move down</string>
+    <!-- Smart clipboard features and text snippets -->
+    <string name="clipboard_folders_default">Commands, Contacts, Templates</string>
+    <string name="smart_suggestion_snippet">Insert snippet: %1$s</string>
+    <string name="smart_suggestion_command">Insert pinned command: %1$s</string>
+    <string name="action_clipboard_manager_move_to_folder">Move to folder</string>
+    <string name="action_clipboard_manager_move_to_folder_dialog">Which folder should this clip be in?</string>
+    <string name="action_clipboard_manager_no_folder">No folder</string>
+    <string name="action_clipboard_manager_all_folders">All</string>
+    <string name="action_clipboard_manager_folder_empty">No pinned clips in this folder yet. Use the folder button on a pinned clip to move it here.</string>
+    <string name="action_clipboard_manager_content_paste_code">Paste code only</string>
+    <string name="action_clipboard_manager_content_open_link">Open link</string>
+    <string name="action_clipboard_manager_content_write_email">Write email</string>
+    <string name="action_clipboard_manager_content_call">Call number</string>
+    <string name="action_clipboard_manager_content_paste_iban">Paste IBAN without spaces</string>
+    <string name="action_clipboard_manager_settings_folders">Folders for pinned clips</string>
+    <string name="action_clipboard_manager_settings_folders_subtitle">Comma separated, e.g. Commands, Contacts, Templates. Leave empty for the defaults.</string>
+    <string name="action_clipboard_manager_settings_command_suggestions">Suggest pinned commands</string>
+    <string name="action_clipboard_manager_settings_command_suggestions_subtitle">When typing \"/\", pinned clips starting with \"/\" are suggested in the suggestion bar</string>
+    <string name="action_clipboard_manager_settings_auto_delete_codes">Automatically delete one-time codes</string>
+    <string name="action_clipboard_manager_settings_auto_delete_codes_subtitle">Copied verification codes are removed from the clipboard after 2 minutes unless pinned</string>
+    <string name="action_clipboard_manager_settings_clean_links">Remove tracking from copied links</string>
+    <string name="action_clipboard_manager_settings_clean_links_subtitle">Removes tracking parameters such as utm_source or fbclid from copied links</string>
+    <string name="text_snippets_title">Text snippets</string>
+    <string name="text_snippets_enabled">Suggest text snippets</string>
+    <string name="text_snippets_enabled_subtitle">Type a shortcut like ;mail and the matching text is offered in the suggestion bar</string>
+    <string name="text_snippets_empty">No snippets yet. Add a shortcut and the text it should be replaced with.</string>
+    <string name="text_snippets_delete">Delete snippet %1$s</string>
+    <string name="text_snippets_shortcut">Shortcut</string>
+    <string name="text_snippets_text">Text</string>
+    <string name="text_snippets_add">Add</string>
     <string name="action_clipboard_manager_settings_skip_delete_confirmation">Skip confirmation when deleting unpinned clips</string>
 
     <string name="action_clipboard_manager_settings_show_quick_clips">Show recently copied text in suggestion bar</string>

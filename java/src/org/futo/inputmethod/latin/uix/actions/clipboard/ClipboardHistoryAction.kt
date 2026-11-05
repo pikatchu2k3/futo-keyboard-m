@@ -1,8 +1,10 @@
 package org.futo.inputmethod.latin.uix.actions.clipboard
 
+import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -75,6 +77,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -91,7 +94,24 @@ import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.common.Constants
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import org.futo.inputmethod.latin.uix.Action
+import org.futo.inputmethod.latin.uix.ClipContent
+import org.futo.inputmethod.latin.uix.ClipContentDetector
+import org.futo.inputmethod.latin.uix.ClipContentKind
+import org.futo.inputmethod.latin.uix.ClipboardAutoDeleteCodes
+import org.futo.inputmethod.latin.uix.ClipboardCleanLinks
+import org.futo.inputmethod.latin.uix.ClipboardPinnedFolders
+import org.futo.inputmethod.latin.uix.CommandSuggestionsEnabled
+import org.futo.inputmethod.latin.uix.KeyboardManagerForAction
+import org.futo.inputmethod.latin.uix.LinkCleaner
+import org.futo.inputmethod.latin.uix.OneTimeCodeLifetimeMs
+import org.futo.inputmethod.latin.uix.TextSnippetsEnabled
+import org.futo.inputmethod.latin.uix.parseFolderList
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import org.futo.inputmethod.latin.uix.ActionHeaderSearch
 import org.futo.inputmethod.latin.uix.ActionWindow
 import org.futo.inputmethod.latin.uix.DialogRequestItem
@@ -111,7 +131,11 @@ import org.futo.inputmethod.latin.uix.getUnlockedSetting
 import org.futo.inputmethod.latin.uix.isDirectBootUnlocked
 import org.futo.inputmethod.latin.uix.setSetting
 import org.futo.inputmethod.latin.uix.settings.DropDownPickerSettingItem
+import org.futo.inputmethod.latin.uix.settings.ScreenTitle
 import org.futo.inputmethod.latin.uix.settings.ScrollableList
+import org.futo.inputmethod.latin.uix.settings.SettingTextField
+import org.futo.inputmethod.latin.uix.settings.TextSnippetEditor
+import org.futo.inputmethod.latin.uix.settings.userSettingDecorationOnly
 import org.futo.inputmethod.latin.uix.settings.SettingSlider
 import org.futo.inputmethod.latin.uix.settings.SettingToggleDataStore
 import org.futo.inputmethod.latin.uix.settings.SettingToggleRaw
@@ -229,6 +253,9 @@ data class ClipboardEntry(
 
     val backingFile: String? = null,
     val sizeMb: Float? = null,
+
+    /** Folder of a pinned clip, null if it is not in any folder */
+    val folder: String? = null,
 )
 
 fun ClipboardEntry.getFile(context: Context): File? =
@@ -263,6 +290,44 @@ object ClipboardThumbCache {
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+@get:DrawableRes
+val ClipContentKind.icon: Int get() = when(this) {
+    ClipContentKind.OneTimeCode -> R.drawable.hash
+    ClipContentKind.Link -> R.drawable.external_link
+    ClipContentKind.Email -> R.drawable.at_sign
+    ClipContentKind.Phone -> R.drawable.phone
+    ClipContentKind.Iban -> R.drawable.credit_card
+}
+
+@get:StringRes
+val ClipContentKind.actionDescription: Int get() = when(this) {
+    ClipContentKind.OneTimeCode -> R.string.action_clipboard_manager_content_paste_code
+    ClipContentKind.Link -> R.string.action_clipboard_manager_content_open_link
+    ClipContentKind.Email -> R.string.action_clipboard_manager_content_write_email
+    ClipContentKind.Phone -> R.string.action_clipboard_manager_content_call
+    ClipContentKind.Iban -> R.string.action_clipboard_manager_content_paste_iban
+}
+
+fun handleClipContentAction(manager: KeyboardManagerForAction, content: ClipContent) {
+    val context = manager.getContext()
+    val intent = when(content.kind) {
+        ClipContentKind.OneTimeCode, ClipContentKind.Iban -> {
+            manager.typeTextCommitted(content.value)
+            return
+        }
+        ClipContentKind.Link -> Intent(Intent.ACTION_VIEW, Uri.parse(content.value))
+        ClipContentKind.Email -> Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:" + content.value))
+        ClipContentKind.Phone -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:" + content.value))
+    }
+
+    try {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch(e: Exception) {
+        e.printStackTrace()
+    }
+}
+
 @Composable
 fun ClipboardEntryView(
     modifier: Modifier,
@@ -273,6 +338,8 @@ fun ClipboardEntryView(
     bitmapOverride: ImageBitmap? = null,
     onMoveUp: ((ClipboardEntry) -> Unit)? = null,
     onMoveDown: ((ClipboardEntry) -> Unit)? = null,
+    onFolder: ((ClipboardEntry) -> Unit)? = null,
+    onContentAction: ((ClipboardEntry, ClipContent) -> Unit)? = null,
 ) {
     val context = LocalContext.current
 
@@ -384,6 +451,41 @@ fun ClipboardEntryView(
                     )
                 }
 
+                if(onContentAction != null) {
+                    val content = remember(clipboardEntry.text) {
+                        ClipContentDetector.detect(clipboardEntry.text)
+                    }
+                    if(content != null) {
+                        IconButton(onClick = {
+                            onContentAction(clipboardEntry, content)
+                        }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                painterResource(id = content.kind.icon),
+                                contentDescription = stringResource(content.kind.actionDescription),
+                                tint = contentColorFor(color),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                if(onFolder != null) {
+                    IconButton(onClick = {
+                        onFolder(clipboardEntry)
+                    }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            painterResource(id = R.drawable.folder),
+                            contentDescription = stringResource(R.string.action_clipboard_manager_move_to_folder),
+                            tint = if(clipboardEntry.folder != null) {
+                                contentColorFor(color)
+                            } else {
+                                contentColorFor(color).copy(alpha = 0.5f)
+                            },
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.weight(1.0f))
 
                 if(onMoveUp != null) {
@@ -422,6 +524,15 @@ fun ClipboardEntryView(
                         modifier = Modifier.size(16.dp)
                     )
                 }
+            }
+
+            if(clipboardEntry.folder != null) {
+                Text(
+                    clipboardEntry.folder,
+                    modifier = Modifier.padding(8.dp, 0.dp),
+                    style = Typography.Small,
+                    color = contentColorFor(color).copy(alpha = 0.7f)
+                )
             }
 
             if(clipboardEntry.text != null) {
@@ -658,7 +769,7 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
                     textChrSeq = null
                 }
 
-                val text = textChrSeq?.toString()
+                var text = textChrSeq?.toString()
 
                 // Nothing to save here
                 if(text == null && uri == null) return
@@ -677,6 +788,25 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
                 ) == true
 
                 if(isSensitive && !canSaveSensitive) return
+
+                // Remove tracking parameters from copied links
+                if(text != null && !isSensitive && context.getSetting(ClipboardCleanLinks)) {
+                    val cleaned = LinkCleaner.cleanIfSingleLink(text)
+                    if(cleaned != text) {
+                        try {
+                            // Replace the system clipboard too, so that pasting anywhere uses
+                            // the cleaned link. This triggers this listener again with the
+                            // cleaned link, which then gets saved normally.
+                            clipboardManager.setPrimaryClip(
+                                ClipData.newPlainText(clip?.description?.label ?: "", cleaned)
+                            )
+                            return
+                        } catch(e: Exception) {
+                            e.printStackTrace()
+                            text = cleaned
+                        }
+                    }
+                }
 
                 if(text != null) {
                     val isAlreadyPinned = clipboardHistory.firstOrNull {
@@ -698,6 +828,13 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
                     clipboardHistory.add(newEntry)
 
                     saveClipboard()
+
+                    if(!isAlreadyPinned
+                        && context.getSetting(ClipboardAutoDeleteCodes)
+                        && ClipContentDetector.findOneTimeCode(text) != null
+                    ) {
+                        scheduleOneTimeCodeRemoval()
+                    }
                 }else if (uri != null && canSaveImages) {
                     onImageAdded(mimeTypes, uri, timestamp)
                 }
@@ -735,7 +872,53 @@ class ClipboardHistoryManager(val context: Context, val coroutineScope: Lifecycl
         saveClipboard()
     }
 
+    private fun scheduleOneTimeCodeRemoval() {
+        coroutineScope.launch(Dispatchers.Main) {
+            delay(OneTimeCodeLifetimeMs + 1000L)
+            removeExpiredOneTimeCodes()
+        }
+    }
+
+    /** Removes unpinned one-time codes (e.g. 2FA codes) that were copied a while ago */
+    fun removeExpiredOneTimeCodes() {
+        if(!context.getSetting(ClipboardAutoDeleteCodes)) return
+
+        val expiry = System.currentTimeMillis() - OneTimeCodeLifetimeMs
+        val expired = clipboardHistory.filter {
+            !it.pinned && it.text != null && it.timestamp <= expiry
+                    && ClipContentDetector.findOneTimeCode(it.text) != null
+        }
+        if(expired.isEmpty()) return
+
+        // Also clear the system clipboard if it still holds the code
+        try {
+            val current = clipboardManager.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+            if(current != null && expired.any { it.text == current }) {
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    clipboardManager.clearPrimaryClip()
+                } else {
+                    clipboardManager.setPrimaryClip(ClipData.newPlainText("", ""))
+                }
+                QuickClip.markQuickClipDismissed()
+            }
+        } catch(e: Exception) {
+            e.printStackTrace()
+        }
+
+        clipboardHistory.removeAll { it in expired }
+        saveClipboard()
+    }
+
+    fun onSetFolder(item: ClipboardEntry, folder: String?) {
+        val idx = clipboardHistory.indexOf(item)
+        if(idx < 0) return
+        clipboardHistory[idx] = item.copy(folder = folder)
+        saveClipboard()
+    }
+
     suspend fun pruneOldItems() = withContext(Dispatchers.Main) {
+        removeExpiredOneTimeCodes()
+
         val numHoursToKeep = context.getSetting(ClipboardHistoryTimeToKeep)
         val numItemsToKeep = context.getSetting(ClipboardHistoryItemsToKeep)
         val megabytesToKeep = context.getSetting(ClipboardHistoryUnpinnedFileMbToKeep)
@@ -1016,6 +1199,7 @@ ${if(clipboardFileSwap.exists()) { clipboardFileSwap.readText() } else { "File d
 
         clipboardHistory.add(itemPos, item.copy(
                 pinned = !item.pinned,
+                folder = if(item.pinned) null else item.folder,
 
                 // Updating timestamp is necessary to prevent the following situation:
                 // 1. Item is past its expiration time but not removed because it's pinned
@@ -1032,12 +1216,18 @@ ${if(clipboardFileSwap.exists()) { clipboardFileSwap.readText() } else { "File d
      * it with the neighbouring pinned item. The list is displayed in reverse order, so the
      * visual top corresponds to the end of [clipboardHistory].
      */
-    fun onMovePinned(item: ClipboardEntry, towardsTop: Boolean) {
+    fun onMovePinned(
+        item: ClipboardEntry,
+        towardsTop: Boolean,
+        sameGroup: (ClipboardEntry) -> Boolean = { true }
+    ) {
         val idx = clipboardHistory.indexOf(item)
         if(idx < 0 || !item.pinned) return
 
         val range = if(towardsTop) (idx + 1 until clipboardHistory.size) else (idx - 1 downTo 0)
-        val otherIdx = range.firstOrNull { clipboardHistory[it].pinned } ?: return
+        val otherIdx = range.firstOrNull {
+            clipboardHistory[it].pinned && sameGroup(clipboardHistory[it])
+        } ?: return
 
         val other = clipboardHistory[otherIdx]
         clipboardHistory[otherIdx] = item
@@ -1088,6 +1278,39 @@ fun String.toFNV1aHash(): Long {
     return hash
 }
 
+@Composable
+private fun FolderTab(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if(selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier
+            .padding(2.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Text(
+            text,
+            style = Typography.SmallMl,
+            modifier = Modifier.padding(12.dp, 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun FolderTabs(folders: List<String>, selected: String?, onSelect: (String?) -> Unit) {
+    LazyRow(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+        item {
+            FolderTab(stringResource(R.string.action_clipboard_manager_all_folders), selected == null) {
+                onSelect(null)
+            }
+        }
+        items(folders) { folder ->
+            FolderTab(folder, selected == folder) { onSelect(folder) }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 val ClipboardHistoryAction = Action(
     icon = R.drawable.clipboard_manager,
@@ -1101,6 +1324,8 @@ val ClipboardHistoryAction = Action(
     persistentStateInitialization = PersistentStateInitialization.OnKeyboardLoad,
     windowImpl = { manager, persistent ->
         val searching = mutableStateOf(false)
+        // Folder of pinned clips that is currently shown, null for all clips
+        val selectedFolder = mutableStateOf<String?>(null)
         val searchText = mutableStateOf("")
         val unlocked = !manager.isDeviceLocked()
         val clipboardHistoryManager = persistent as ClipboardHistoryManager
@@ -1301,6 +1526,14 @@ val ClipboardHistoryAction = Action(
                         }
 
                         val showPinnedOnTop = useDataStoreValue(ClipboardShowPinnedOnTop)
+                        val foldersSetting = useDataStoreValue(ClipboardPinnedFolders)
+                        val defaultFolders = stringResource(R.string.clipboard_folders_default)
+                        val folders = remember(foldersSetting, defaultFolders) {
+                            parseFolderList(foldersSetting.ifBlank { defaultFolders })
+                        }
+                        if(selectedFolder.value != null && selectedFolder.value !in folders) {
+                            selectedFolder.value = null
+                        }
                         val pinnedSortOrder = useDataStoreValue(ClipboardPinnedSortOrder)
                         val collator = remember { Collator.getInstance().apply { strength = Collator.SECONDARY } }
 
@@ -1338,16 +1571,50 @@ val ClipboardHistoryAction = Action(
                                 } else {
                                     visual
                                 }
+                            }.let { list ->
+                                val folder = selectedFolder.value
+                                if(folder != null && !searching.value) {
+                                    list.filter { it.pinned && it.folder == folder }
+                                } else {
+                                    list
+                                }
                             }
                         }
                         val canReorderPinned = pinnedSortOrder == ClipboardPinnedSortOrders.CUSTOM
                                 && !searching.value
+                        val currentFolder = selectedFolder.value.takeIf { !searching.value }
                         val firstPinnedIdx = clipboardList.indexOfFirst { it.pinned }
                         val lastPinnedIdx = clipboardList.indexOfLast { it.pinned }
 
                         if(clipboardList.isEmpty() && searching.value && searchQuery.isNotEmpty() && clipboardHistoryManager.clipboardHistory.isNotEmpty()) {
                             Text(
                                 stringResource(R.string.action_clipboard_manager_no_clips_found),
+                                style = Typography.Body.Medium.copy(fontStyle = FontStyle.Italic),
+                                color = MaterialTheme.colorScheme.outline,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .padding(16.dp)
+                                    .fillMaxWidth()
+                            )
+                            return
+                        }
+
+                        if(!searching.value && folders.isNotEmpty()
+                            && clipboardHistoryManager.clipboardHistory.any { it.pinned }
+                        ) {
+                            FolderTabs(
+                                folders = folders,
+                                selected = selectedFolder.value,
+                                onSelect = {
+                                    selectedFolder.value = it
+                                    manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
+                                }
+                            )
+                        }
+
+                        if(clipboardList.isEmpty() && currentFolder != null) {
+                            Text(
+                                stringResource(R.string.action_clipboard_manager_folder_empty),
                                 style = Typography.Body.Medium.copy(fontStyle = FontStyle.Italic),
                                 color = MaterialTheme.colorScheme.outline,
                                 textAlign = TextAlign.Center,
@@ -1429,13 +1696,37 @@ val ClipboardHistoryAction = Action(
                                         manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
                                     },
                                     onMoveUp = if(reorderable && i > firstPinnedIdx) { {
-                                        clipboardHistoryManager.onMovePinned(it, towardsTop = true)
+                                        clipboardHistoryManager.onMovePinned(it, towardsTop = true,
+                                            sameGroup = { other -> currentFolder == null || other.folder == currentFolder })
                                         manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
                                     } } else null,
                                     onMoveDown = if(reorderable && i < lastPinnedIdx) { {
-                                        clipboardHistoryManager.onMovePinned(it, towardsTop = false)
+                                        clipboardHistoryManager.onMovePinned(it, towardsTop = false,
+                                            sameGroup = { other -> currentFolder == null || other.folder == currentFolder })
                                         manager.performHapticAndAudioFeedback(Constants.CODE_TAB, view)
                                     } } else null,
+                                    onFolder = if(entry.pinned && folders.isNotEmpty()) { { item ->
+                                        manager.requestDialog(
+                                            resources.getString(R.string.action_clipboard_manager_move_to_folder_dialog),
+                                            folders.map { folder ->
+                                                DialogRequestItem(if(item.folder == folder) "✓ $folder" else folder) {
+                                                    clipboardHistoryManager.onSetFolder(item, folder)
+                                                }
+                                            } + DialogRequestItem(
+                                                resources.getString(R.string.action_clipboard_manager_no_folder)
+                                            ) {
+                                                clipboardHistoryManager.onSetFolder(item, null)
+                                            },
+                                            {}
+                                        )
+                                    } } else null,
+                                    onContentAction = { item, content ->
+                                        handleClipContentAction(manager, content)
+                                        if(content.kind == ClipContentKind.OneTimeCode || content.kind == ClipContentKind.Iban) {
+                                            clipboardHistoryManager.onPaste(item)
+                                        }
+                                        manager.performHapticAndAudioFeedback(Constants.CODE_OUTPUT_TEXT, view)
+                                    },
                                 )
                             }
                         }
@@ -1570,6 +1861,59 @@ val ClipboardHistoryAction = Action(
                     )
                 },
                 visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }
+            ),
+
+            UserSetting(
+                name = R.string.action_clipboard_manager_settings_folders,
+                subtitle = R.string.action_clipboard_manager_settings_folders_subtitle,
+                component = {
+                    SettingTextField(
+                        title = stringResource(R.string.action_clipboard_manager_settings_folders),
+                        placeholder = stringResource(R.string.clipboard_folders_default),
+                        field = ClipboardPinnedFolders
+                    )
+                    Text(
+                        stringResource(R.string.action_clipboard_manager_settings_folders_subtitle),
+                        style = Typography.SmallMl,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(16.dp, 0.dp, 16.dp, 8.dp)
+                    )
+                },
+                visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }
+            ),
+
+            userSettingToggleDataStore(
+                title = R.string.action_clipboard_manager_settings_command_suggestions,
+                subtitle = R.string.action_clipboard_manager_settings_command_suggestions_subtitle,
+                setting = CommandSuggestionsEnabled
+            ).copy(visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }),
+
+            userSettingToggleDataStore(
+                title = R.string.action_clipboard_manager_settings_auto_delete_codes,
+                subtitle = R.string.action_clipboard_manager_settings_auto_delete_codes_subtitle,
+                setting = ClipboardAutoDeleteCodes
+            ).copy(visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }),
+
+            userSettingToggleDataStore(
+                title = R.string.action_clipboard_manager_settings_clean_links,
+                subtitle = R.string.action_clipboard_manager_settings_clean_links_subtitle,
+                setting = ClipboardCleanLinks
+            ).copy(visibilityCheck = { useDataStoreValue(ClipboardHistoryEnabled) }),
+
+            userSettingDecorationOnly {
+                ScreenTitle(stringResource(R.string.text_snippets_title))
+            },
+
+            userSettingToggleDataStore(
+                title = R.string.text_snippets_enabled,
+                subtitle = R.string.text_snippets_enabled_subtitle,
+                setting = TextSnippetsEnabled
+            ),
+
+            UserSetting(
+                name = R.string.text_snippets_title,
+                component = { TextSnippetEditor() },
+                visibilityCheck = { useDataStoreValue(TextSnippetsEnabled) }
             ),
 
             userSettingToggleDataStore(
