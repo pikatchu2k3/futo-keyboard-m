@@ -13,4 +13,35 @@
     <!-- Colorful key popups with fireworks -->
     <string name="colorful_popup_on_keypress">Bunte Popups mit Feuerwerk</string>
     <string name="colorful_popup_on_keypress_subtitle">Tasten-Popups erscheinen in wechselnden, leuchtenden Farben und jeder Tastendruck zündet ein kleines Feuerwerk</string>
+
+    <!-- Smart clipboard features and text snippets -->
+    <string name="clipboard_folders_default">Befehle, Kontakt, Vorlagen</string>
+    <string name="smart_suggestion_snippet">Textbaustein einfügen: %1$s</string>
+    <string name="smart_suggestion_command">Angepinnten Befehl einfügen: %1$s</string>
+    <string name="action_clipboard_manager_move_to_folder">In Ordner verschieben</string>
+    <string name="action_clipboard_manager_move_to_folder_dialog">In welchen Ordner soll dieser Clip?</string>
+    <string name="action_clipboard_manager_no_folder">Kein Ordner</string>
+    <string name="action_clipboard_manager_all_folders">Alle</string>
+    <string name="action_clipboard_manager_folder_empty">Noch keine angepinnten Clips in diesem Ordner. Verschiebe einen angepinnten Clip mit dem Ordner-Symbol hierher.</string>
+    <string name="action_clipboard_manager_content_paste_code">Nur den Code einfügen</string>
+    <string name="action_clipboard_manager_content_open_link">Link öffnen</string>
+    <string name="action_clipboard_manager_content_write_email">E-Mail schreiben</string>
+    <string name="action_clipboard_manager_content_call">Nummer anrufen</string>
+    <string name="action_clipboard_manager_content_paste_iban">IBAN ohne Leerzeichen einfügen</string>
+    <string name="action_clipboard_manager_settings_folders">Ordner für angepinnte Clips</string>
+    <string name="action_clipboard_manager_settings_folders_subtitle">Durch Kommas getrennt, z. B. Befehle, Kontakt, Vorlagen. Leer lassen für die Standardordner.</string>
+    <string name="action_clipboard_manager_settings_command_suggestions">Angepinnte Befehle vorschlagen</string>
+    <string name="action_clipboard_manager_settings_command_suggestions_subtitle">Beim Tippen von „/“ werden angepinnte Clips, die mit „/“ beginnen, in der Vorschlagsleiste angeboten</string>
+    <string name="action_clipboard_manager_settings_auto_delete_codes">Einmalcodes automatisch löschen</string>
+    <string name="action_clipboard_manager_settings_auto_delete_codes_subtitle">Kopierte Bestätigungscodes werden nach 2 Minuten aus der Zwischenablage entfernt, außer sie sind angepinnt</string>
+    <string name="action_clipboard_manager_settings_clean_links">Tracking aus kopierten Links entfernen</string>
+    <string name="action_clipboard_manager_settings_clean_links_subtitle">Entfernt Tracking-Parameter wie utm_source oder fbclid aus kopierten Links</string>
+    <string name="text_snippets_title">Textbausteine</string>
+    <string name="text_snippets_enabled">Textbausteine vorschlagen</string>
+    <string name="text_snippets_enabled_subtitle">Tippe ein Kürzel wie ;mail und der passende Text wird in der Vorschlagsleiste angeboten</string>
+    <string name="text_snippets_empty">Noch keine Textbausteine. Lege ein Kürzel und den Text an, durch den es ersetzt werden soll.</string>
+    <string name="text_snippets_delete">Textbaustein %1$s löschen</string>
+    <string name="text_snippets_shortcut">Kürzel</string>
+    <string name="text_snippets_text">Text</string>
+    <string name="text_snippets_add">Hinzufügen</string>
 </resources>

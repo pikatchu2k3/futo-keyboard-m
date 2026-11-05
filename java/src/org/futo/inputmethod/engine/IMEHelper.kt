@@ -60,6 +60,10 @@ class IMEHelper(
         latinIME.uixManager.onInputEvent(textEmpty)
     }
 
+    public fun updateUiInputState(textEmpty: Boolean, textBeforeCursor: CharSequence?) {
+        latinIME.uixManager.onInputEvent(textEmpty, textBeforeCursor)
+    }
+
     public fun getCodepointCoordinates(codePoints: IntArray): IntArray {
         return latinIME.latinIMELegacy.getCoordinatesForCurrentKeyboard(codePoints)
     }

@@ -823,6 +823,8 @@ fun ActionBar(
     keyboardManagerForAction: KeyboardManagerForAction? = null,
     quickClipState: QuickClipState? = null,
     onQuickClipDismiss: () -> Unit = {},
+    smartSuggestions: List<SmartSuggestion> = emptyList(),
+    onSmartSuggestion: (SmartSuggestion) -> Unit = {},
     needToUseExpandableSuggestionUi: Boolean = false,
     loading: Boolean = false,
 ) {
@@ -899,6 +901,8 @@ fun ActionBar(
                             && inlineSuggestions.isNotEmpty()
                         ) {
                             InlineSuggestions(inlineSuggestions)
+                        } else if(smartSuggestions.isNotEmpty()) {
+                            SmartSuggestionsView(smartSuggestions, onSmartSuggestion)
                         } else if(quickClipState != null) {
                             QuickClipView(quickClipState, onQuickClipDismiss)
                         } else if (words != null) {
