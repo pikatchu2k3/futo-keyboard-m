@@ -122,8 +122,14 @@ log "=== [3/5] Build ($GRADLE_TASK) ==="
 # Ein transienter systemd-User-Service erbt das Limit nicht; Fallback bleibt der direkte Aufruf.
 run_build() {
   if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    # --setenv ist Pflicht: der transiente User-Service startet aus der Umgebung des
+    # User-Managers, NICHT aus dieser Shell. Ohne explizite Uebergabe fehlt ANDROID_HOME und
+    # Gradle bricht mit "SDK location not found" ab (live erlebt 05.11.2026).
     systemd-run --user --unit="futo-build-$$" --collect \
       --property=Type=oneshot --property=MemoryMax=14G --wait --pipe \
+      --setenv=ANDROID_HOME="$ANDROID_HOME" \
+      --setenv=JAVA_HOME="$JAVA_HOME" \
+      --setenv=PATH="$PATH" \
       bash -c "cd '$REPO_DIR' && ./gradlew $GRADLE_TASK"
   else
     ./gradlew "$GRADLE_TASK"
