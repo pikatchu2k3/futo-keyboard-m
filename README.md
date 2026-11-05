@@ -16,6 +16,15 @@ The "Check for updates manually" button in the nightly build will check against 
 
 ## Changelog
 
+### v2026.11.07
+- ✨ **Ordner für angepinnte Clips:** im Zwischenablage-Manager gibt es einen Reiter „Alle" plus einen Reiter pro Ordner. Über das Ordner-Symbol auf einem angepinnten Clip wird er zugeordnet, der Ordnername steht auf dem Clip. Ordnernamen sind in den Einstellungen einstellbar (Komma-getrennt, Standard „Befehle, Kontakt, Vorlagen"). Verschieben mit ↑/↓ bleibt innerhalb des Ordners; beim Lösen der Anpinnung entfällt die Zuordnung.
+- ✨ **Textbausteine:** in den Zwischenablage-Einstellungen lassen sich Kürzel (z. B. `;mail`) mit Text anlegen und löschen. Beim Tippen des Kürzels erscheint der Text in der Vorschlagsleiste; ein Tipp ersetzt das Kürzel.
+- ✨ **Befehlsvorschläge:** bei Eingabe von `/` werden angepinnte Clips angeboten, die mit `/` beginnen (`/mo` → `/model …`).
+- ✨ **Inhaltserkennung in Clips:** Einmalcode, IBAN (mit Prüfsummenprüfung), Link, E-Mail-Adresse und Telefonnummer bekommen ein Symbol mit passender Aktion — Code einfügen, IBAN ohne Leerzeichen, Link öffnen, Mail schreiben, Nummer anrufen.
+- ✨ **Einmalcodes automatisch löschen:** kopierte Bestätigungscodes werden 2 Minuten nach dem Kopieren aus Verlauf und System-Zwischenablage entfernt, außer sie sind angepinnt. Abschaltbar.
+- ✨ **Links aufräumen:** Tracking-Parameter (`utm_*`, `fbclid`, `gclid`, YouTube-`si`, Amazon-`ref`/`tag` u. a.) werden aus kopierten Links entfernt, auch in der System-Zwischenablage. Abschaltbar.
+- 🇩🇪 Englische Texte in `strings-uix.xml`, deutsche in `java/res/values-de/strings-futo-m.xml`.
+
 ### v2026.11.06
 - ✨ **Neu — Bunte Tasten-Popups mit Feuerwerk:** neue Einstellung „Bunte Popups mit Feuerwerk" (standardmäßig aus). Tasten-Popups bekommen einen leuchtenden Farbverlauf, dessen Farbe bei jedem Tastendruck wechselt; jeder Tastendruck löst ein kleines Partikel-Feuerwerk aus (max. 600 Partikel gleichzeitig).
 - 🇩🇪 **Deutsche Texte** für die neuen Funktionen in `java/res/values-de/strings-futo-m.xml` — die Upstream-Übersetzungen im `translations`-Submodul bleiben unberührt.
