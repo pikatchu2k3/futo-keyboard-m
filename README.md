@@ -16,9 +16,25 @@ The "Check for updates manually" button in the nightly build will check against 
 
 ## Changelog
 
+### v2026.11.06
+- ✨ **Neu — Bunte Tasten-Popups mit Feuerwerk:** neue Einstellung „Bunte Popups mit Feuerwerk" (standardmäßig aus). Tasten-Popups bekommen einen leuchtenden Farbverlauf, dessen Farbe bei jedem Tastendruck wechselt; jeder Tastendruck löst ein kleines Partikel-Feuerwerk aus (max. 600 Partikel gleichzeitig).
+- 🇩🇪 **Deutsche Texte** für die neuen Funktionen in `java/res/values-de/strings-futo-m.xml` — die Upstream-Übersetzungen im `translations`-Submodul bleiben unberührt.
+- 🔧 Upstream-Sync: FUTO `master` @ `7d61ab413`.
+
+### v2026.11.05
+- ✨ **Neu — Angepinnte Clips sortieren:** im Zwischenablage-Manager (QuickClip) per Button in der Titelleiste oder über die Einstellung „Angepinnte Clips sortieren". Drei Modi: **Individuell** (↑/↓-Pfeile verschieben den Clip), **Alphabetisch** (Groß-/Kleinschreibung ignoriert, Umlaute korrekt einsortiert, Bilder am Ende) und **Nach Datum** (neueste zuerst).
+- Das Einfügen eines angepinnten Clips ändert seinen Zeitstempel nicht mehr; bei „Individuell" behält ein erneut kopierter Clip seinen Platz.
+
 ### v2026.08.31
 - 🐛 **Fixed:** Text über den integrierten Zwischenablage-Manager (QuickClip / Clipboard-Verlauf) einfügen und dann einmal **Backspace** drücken löschte vorher den kompletten eingefügten Text. Jetzt wird nur noch das letzte Zeichen gelöscht (wie bei normalem Einfügen) — der Clipboard-Text wird direkt per `commitText` eingefügt statt über den `mEnteredText`-Mehrzeichen-Pfad (des `mBackspaceDeletesInsertedText`-Mechanismus für Smiley-/`.com`-Tasten).
 
+## Installation (dieser Fork)
+
+Fertige Builds liegen als GitHub-Release vor: [Releases](https://github.com/pikatchu2k3/futo-keyboard-m/releases).
+
+- **Obtainium:** „Add App" → GitHub → `https://github.com/pikatchu2k3/futo-keyboard-m`, APK-Filter `*-unstable-release.apk`. Updates kommen automatisch über neue Release-Tags.
+- **applicationId:** `org.futo.inputmethod.latin.shizuku` — der Fork läuft **parallel** zur offiziellen FUTO-Tastatur (`org.futo.inputmethod.latin`), ohne diese zu überschreiben. Nur `arm64-v8a`.
+- Der Build läuft automatisch: sonntags wird Upstream synchronisiert, gebaut und ein Release erzeugt (`.github`-frei, per Skript `scripts/update-build-release.sh` auf einem Heim-Server).
 
 ## Issue tracking and contributing
 

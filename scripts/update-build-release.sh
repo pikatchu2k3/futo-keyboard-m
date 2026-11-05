@@ -116,8 +116,21 @@ export VERSION_CODE="$(git rev-list --first-parent --count master 2>/dev/null ||
 log "Release-Tag: $TAG (VERSION_NAME=$VERSION_NAME, VERSION_CODE=$VERSION_CODE)"
 
 log "=== [3/5] Build ($GRADLE_TASK) ==="
-if ! ./gradlew "$GRADLE_TASK" 2>&1 | tail -25 >&2; then
-  fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent übernimmt"
+# Hermes' Cron-/Terminal-Läufe stecken in einer 4-GB-Cgroup (hermes-worker-*.scope). Der
+# Gradle-Daemon braucht mit R8 + Metaspace mehr (Peak gemessen: 4,0 GB) und wird sonst vom
+# Memcg-OOM-Killer abgeschossen -> "Gradle build daemon disappeared unexpectedly".
+# Ein transienter systemd-User-Service erbt das Limit nicht; Fallback bleibt der direkte Aufruf.
+run_build() {
+  if command -v systemd-run >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    systemd-run --user --unit="futo-build-$$" --collect \
+      --property=Type=oneshot --property=MemoryMax=14G --wait --pipe \
+      bash -c "cd '$REPO_DIR' && ./gradlew $GRADLE_TASK"
+  else
+    ./gradlew "$GRADLE_TASK"
+  fi
+}
+if ! run_build 2>&1 | tail -25 >&2; then
+  fail "BUILD FEHLGESCHLAGEN ($GRADLE_TASK) — Reparatur-Agent uebernimmt"
 fi
 APK="$(ls -t build/outputs/apk/unstable/release/*.apk 2>/dev/null | head -1)"
 [ -n "$APK" ] && [ -f "$APK" ] || fail "APK nicht gefunden"
