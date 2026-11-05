@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- German texts for features only present in this fork (not part of the upstream translations) -->
+<resources>
+    <!-- Clipboard manager: sorting of pinned clips -->
+    <string name="action_clipboard_manager_sort_pinned">Angepinnte Clips sortieren</string>
+    <string name="action_clipboard_manager_sort_pinned_dialog">Wie sollen angepinnte Clips sortiert werden?</string>
+    <string name="action_clipboard_manager_sort_pinned_custom">Individuell</string>
+    <string name="action_clipboard_manager_sort_pinned_alphabetical">Alphabetisch</string>
+    <string name="action_clipboard_manager_sort_pinned_newest_first">Nach Datum (neueste zuerst)</string>
+    <string name="action_clipboard_manager_move_item_up">Nach oben verschieben</string>
+    <string name="action_clipboard_manager_move_item_down">Nach unten verschieben</string>
+
+    <!-- Colorful key popups with fireworks -->
+    <string name="colorful_popup_on_keypress">Bunte Popups mit Feuerwerk</string>
+    <string name="colorful_popup_on_keypress_subtitle">Tasten-Popups erscheinen in wechselnden, leuchtenden Farben und jeder Tastendruck zündet ein kleines Feuerwerk</string>
+</resources>

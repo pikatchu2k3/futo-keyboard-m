@@ -236,6 +236,7 @@ public final class KeyboardSwitcher implements SwitchActions {
         keyboardView.setKeyPreviewPopupEnabled(
                 currentSettingsValues.mKeyPreviewPopupOn,
                 currentSettingsValues.mKeyPreviewPopupDismissDelay);
+        keyboardView.setColorfulKeyPopupEnabled(currentSettingsValues.mColorfulKeyPopupOn);
         keyboardView.setKeyPreviewAnimationParams(
                 currentSettingsValues.mHasCustomKeyPreviewAnimationParams,
                 currentSettingsValues.mKeyPreviewShowUpStartXScale,

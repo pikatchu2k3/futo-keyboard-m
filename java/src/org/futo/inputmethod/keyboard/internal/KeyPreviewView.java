@@ -18,6 +18,10 @@ package org.futo.inputmethod.keyboard.internal;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
@@ -156,6 +160,47 @@ public class KeyPreviewView extends androidx.appcompat.widget.AppCompatTextView 
     }
 
 
+    // 0 = normal themed popup, otherwise base color of the colorful popup
+    private int mColorfulColor = 0;
+    private final Paint mColorfulPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mColorfulBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF mColorfulRect = new RectF();
+
+    /**
+     * Enables the colorful popup style with the given base color, or disables it when 0.
+     */
+    public void setColorfulColor(final int color) {
+        mColorfulColor = color;
+        if (color != 0) {
+            setTextColor(Color.WHITE);
+            setShadowLayer(4.0f, 0.0f, 1.0f, Color.argb(140, 0, 0, 0));
+        } else {
+            setShadowLayer(0.0f, 0.0f, 0.0f, Color.TRANSPARENT);
+        }
+        invalidate();
+    }
+
+    private void drawColorfulBackground(final Canvas canvas) {
+        final float density = getResources().getDisplayMetrics().density;
+        final float[] hsv = new float[3];
+        Color.colorToHSV(mColorfulColor, hsv);
+        hsv[0] = (hsv[0] + 50.0f) % 360.0f;
+        final int secondColor = Color.HSVToColor(hsv);
+
+        mColorfulPaint.setShader(new LinearGradient(0, 0, getWidth(), getHeight(),
+                mColorfulColor, secondColor, Shader.TileMode.CLAMP));
+
+        final float inset = density;
+        mColorfulRect.set(inset, inset, getWidth() - inset, getHeight() - inset);
+        final float radius = 10.0f * density;
+        canvas.drawRoundRect(mColorfulRect, radius, radius, mColorfulPaint);
+
+        mColorfulBorderPaint.setStyle(Paint.Style.STROKE);
+        mColorfulBorderPaint.setStrokeWidth(1.5f * density);
+        mColorfulBorderPaint.setColor(Color.argb(160, 255, 255, 255));
+        canvas.drawRoundRect(mColorfulRect, radius, radius, mColorfulBorderPaint);
+    }
+
     private Drawable mBackground = null;
     @Override
     public void setBackground(Drawable background) {
@@ -165,8 +210,12 @@ public class KeyPreviewView extends androidx.appcompat.widget.AppCompatTextView 
 
     @Override
     protected void onDraw(final Canvas canvas) {
-        mBackground.setBounds(0, 0, getWidth(), getHeight());
-        mBackground.draw(canvas);
+        if (mColorfulColor != 0) {
+            drawColorfulBackground(canvas);
+        } else {
+            mBackground.setBounds(0, 0, getWidth(), getHeight());
+            mBackground.draw(canvas);
+        }
 
         if(!drawFlickKeys(canvas)) {
             super.onDraw(canvas);
