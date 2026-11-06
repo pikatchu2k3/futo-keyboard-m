@@ -105,6 +105,7 @@ public final class KeyPreviewChoreographer {
         placeKeyPreview(key, keyPreviewView, iconsSet, drawParams, keyboardViewWidth, keyboardOrigin, background.getForegroundColor());
         // Must come after placeKeyPreview, which sets the themed text color
         keyPreviewView.setColorfulColor(colorfulColor);
+        keyPreviewView.setAlpha(mParams.getOpacity());
         showKeyPreview(key, keyPreviewView, withAnimation);
     }
 

@@ -11,8 +11,20 @@
     <string name="action_clipboard_manager_move_item_down">Nach unten verschieben</string>
 
     <!-- Colorful key popups with fireworks -->
-    <string name="colorful_popup_on_keypress">Bunte Popups mit Feuerwerk</string>
-    <string name="colorful_popup_on_keypress_subtitle">Tasten-Popups erscheinen in wechselnden, leuchtenden Farben und jeder Tastendruck zündet ein kleines Feuerwerk</string>
+    <string name="colorful_popup_on_keypress">Bunte Popups</string>
+    <string name="colorful_popup_on_keypress_subtitle">Tasten-Popups erscheinen in wechselnden, leuchtenden Farben</string>
+    <string name="popup_transparency">Transparenz der Popups</string>
+    <string name="popup_transparency_subtitle">Wie durchsichtig die Tasten-Popups sind. 0 % ist komplett deckend.</string>
+    <string name="key_press_effect">Tasteneffekt</string>
+    <string name="key_press_effect_none">Keiner</string>
+    <string name="key_press_effect_fireworks">Feuerwerk</string>
+    <string name="key_press_effect_confetti">Konfetti</string>
+    <string name="key_press_effect_hearts">Herzen</string>
+    <string name="key_press_effect_stars">Sterne</string>
+    <string name="key_press_effect_bubbles">Seifenblasen</string>
+    <string name="key_press_effect_snow">Schnee</string>
+    <string name="key_press_effect_ripple">Welle</string>
+    <string name="key_press_effect_random">Überraschung (zufällig)</string>
 
     <!-- Smart clipboard features and text snippets -->
     <string name="clipboard_folders_default">Befehle, Kontakt, Vorlagen</string>

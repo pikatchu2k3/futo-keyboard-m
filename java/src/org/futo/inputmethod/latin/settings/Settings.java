@@ -18,6 +18,7 @@ package org.futo.inputmethod.latin.settings;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import org.futo.inputmethod.keyboard.internal.KeyPressEffectDrawingPreview;
 import android.content.pm.ApplicationInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -54,6 +55,27 @@ public final class Settings implements SharedPreferences.OnSharedPreferenceChang
     public static final String PREF_SOUND_ON = "sound_on";
     public static final String PREF_POPUP_ON = "popup_on";
     public static final String PREF_COLORFUL_POPUP_ON = "colorful_popup_fireworks_on";
+    public static final String PREF_KEY_PRESS_EFFECT = "key_press_effect";
+    /** Transparency of key popups in percent (0 = opaque) */
+    public static final String PREF_POPUP_TRANSPARENCY = "popup_transparency_percent";
+    public static final int MAX_POPUP_TRANSPARENCY = 90;
+
+    /**
+     * The key press effect. Before this setting existed, the colorful popup setting also
+     * enabled fireworks, so that remains the default for users who enabled it.
+     */
+    public static int readKeyPressEffect(final SharedPreferences prefs) {
+        final int legacyDefault = prefs.getBoolean(PREF_COLORFUL_POPUP_ON, false)
+                ? KeyPressEffectDrawingPreview.EFFECT_FIREWORKS
+                : KeyPressEffectDrawingPreview.EFFECT_NONE;
+        return prefs.getInt(PREF_KEY_PRESS_EFFECT, legacyDefault);
+    }
+
+    public static float readKeyPreviewOpacity(final SharedPreferences prefs) {
+        final int transparency = Math.max(0, Math.min(MAX_POPUP_TRANSPARENCY,
+                prefs.getInt(PREF_POPUP_TRANSPARENCY, 0)));
+        return 1.0f - transparency / 100.0f;
+    }
     // PREF_VOICE_MODE_OBSOLETE is obsolete. Use PREF_VOICE_INPUT_KEY instead.
     public static final String PREF_VOICE_MODE_OBSOLETE = "voice_mode";
     public static final String PREF_VOICE_INPUT_KEY = "pref_voice_input_key";
