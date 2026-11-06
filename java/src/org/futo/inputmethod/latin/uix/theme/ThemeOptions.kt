@@ -27,6 +27,18 @@ import org.futo.inputmethod.latin.uix.theme.presets.Sunflower
 import org.futo.inputmethod.latin.uix.theme.presets.VoiceInputTheme
 import org.futo.inputmethod.latin.uix.theme.presets.DevTheme
 import org.futo.inputmethod.latin.uix.theme.presets.HighContrastYellow
+import org.futo.inputmethod.latin.uix.theme.presets.Dracula
+import org.futo.inputmethod.latin.uix.theme.presets.Nord
+import org.futo.inputmethod.latin.uix.theme.presets.GruvboxDark
+import org.futo.inputmethod.latin.uix.theme.presets.TokyoNight
+import org.futo.inputmethod.latin.uix.theme.presets.OneDark
+import org.futo.inputmethod.latin.uix.theme.presets.SolarizedDark
+import org.futo.inputmethod.latin.uix.theme.presets.RosePine
+import org.futo.inputmethod.latin.uix.theme.presets.EverforestDark
+import org.futo.inputmethod.latin.uix.theme.presets.Kanagawa
+import org.futo.inputmethod.latin.uix.theme.presets.Monokai
+import org.futo.inputmethod.latin.uix.theme.presets.AmoledCyan
+import org.futo.inputmethod.latin.uix.theme.presets.AmoledAmber
 
 data class ThemeOption(
     val dynamic: Boolean,
@@ -63,6 +75,18 @@ val ThemeOptions = mapOf(
     DevTheme.key to DevTheme,
     HighContrastYellow.key to HighContrastYellow,
     CatppuccinMocha.key to CatppuccinMocha,
+    Dracula.key to Dracula,
+    Nord.key to Nord,
+    GruvboxDark.key to GruvboxDark,
+    TokyoNight.key to TokyoNight,
+    OneDark.key to OneDark,
+    SolarizedDark.key to SolarizedDark,
+    RosePine.key to RosePine,
+    EverforestDark.key to EverforestDark,
+    Kanagawa.key to Kanagawa,
+    Monokai.key to Monokai,
+    AmoledCyan.key to AmoledCyan,
+    AmoledAmber.key to AmoledAmber,
 )
 
 val ThemeOptionKeys = ThemeOptions.keys
