@@ -56,4 +56,7 @@
     <string name="text_snippets_shortcut">Kürzel</string>
     <string name="text_snippets_text">Text</string>
     <string name="text_snippets_add">Hinzufügen</string>
+
+    <!-- Theme names that differ in German -->
+    <string name="theme_amoled_amber">AMOLED Bernstein</string>
 </resources>
