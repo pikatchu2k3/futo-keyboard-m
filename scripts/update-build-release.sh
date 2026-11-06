@@ -112,7 +112,13 @@ for offset in 0 1 2 3 4 5 6 7; do
 done
 [ -n "$TAG" ] || fail "kein freier Release-Tag in den naechsten 8 Tagen gefunden"
 export VERSION_NAME="$TAG"
-export VERSION_CODE="$(git rev-list --first-parent --count master 2>/dev/null || echo 0)"
+# versionCode = Release-Tag-Datum als Zahl (vYYYY.MM.DD -> YYYYMMDD), NICHT der rev-list-Zaehler.
+# Grund (live 06.11.2026): ein Test-Build des PR-Branches und das Release trugen beide versionCode 39
+# (Zaehlerstand von master) -> Obtainium meldet "schon aktuell" und bietet das Update nie an.
+# Der Tag ist pro Release eindeutig (Same-Day-Fixes weichen auf den Folgetag aus) und waechst monoton.
+export VERSION_CODE="${TAG#v}"
+export VERSION_CODE="${VERSION_CODE//./}"
+[[ "$VERSION_CODE" =~ ^[0-9]{8}$ ]] || fail "versionCode '$VERSION_CODE' ist keine 8-stellige Zahl (Tag: $TAG)"
 log "Release-Tag: $TAG (VERSION_NAME=$VERSION_NAME, VERSION_CODE=$VERSION_CODE)"
 
 log "=== [3/5] Build ($GRADLE_TASK) ==="
