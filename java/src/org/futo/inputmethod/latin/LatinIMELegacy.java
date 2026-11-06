@@ -357,6 +357,8 @@ public class LatinIMELegacy implements KeyboardActionListener,
         mainKeyboardView.setKeyPreviewPopupEnabled(currentSettingsValues.mKeyPreviewPopupOn,
                 currentSettingsValues.mKeyPreviewPopupDismissDelay);
         mainKeyboardView.setColorfulKeyPopupEnabled(currentSettingsValues.mColorfulKeyPopupOn);
+        mainKeyboardView.setKeyPressEffect(currentSettingsValues.mKeyPressEffect);
+        mainKeyboardView.setKeyPreviewOpacity(currentSettingsValues.mKeyPreviewOpacity);
         mainKeyboardView.setSlidingKeyInputPreviewEnabled(
                 currentSettingsValues.mSlidingKeyInputPreviewEnabled);
         mainKeyboardView.setGestureHandlingEnabledByUser(

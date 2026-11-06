@@ -118,6 +118,17 @@ public final class KeyPreviewDrawParams {
         mLingerTimeout = lingerTimeout;
     }
 
+    // Opacity of key popups, 0 (invisible) to 1 (opaque)
+    private float mOpacity = 1.0f;
+
+    public void setOpacity(final float opacity) {
+        mOpacity = Math.max(0.0f, Math.min(1.0f, opacity));
+    }
+
+    public float getOpacity() {
+        return mOpacity;
+    }
+
     public boolean isPopupEnabled() {
         return mShowPopup;
     }

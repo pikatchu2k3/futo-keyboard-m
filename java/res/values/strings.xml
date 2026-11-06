@@ -29,8 +29,20 @@
 
     <!-- Option to control whether or not to show a popup with a larger font on each key press. -->
     <string name="popup_on_keypress">Popup on keypress</string>
-    <string name="colorful_popup_on_keypress">Colorful popups with fireworks</string>
-    <string name="colorful_popup_on_keypress_subtitle">Key popups are shown in changing bright colors and each keypress sets off a small firework</string>
+    <string name="colorful_popup_on_keypress">Colorful popups</string>
+    <string name="colorful_popup_on_keypress_subtitle">Key popups are shown in changing bright colors</string>
+    <string name="popup_transparency">Popup transparency</string>
+    <string name="popup_transparency_subtitle">How see-through key popups are. 0 % is fully opaque.</string>
+    <string name="key_press_effect">Key press effect</string>
+    <string name="key_press_effect_none">None</string>
+    <string name="key_press_effect_fireworks">Fireworks</string>
+    <string name="key_press_effect_confetti">Confetti</string>
+    <string name="key_press_effect_hearts">Hearts</string>
+    <string name="key_press_effect_stars">Stars</string>
+    <string name="key_press_effect_bubbles">Soap bubbles</string>
+    <string name="key_press_effect_snow">Snow</string>
+    <string name="key_press_effect_ripple">Ripple</string>
+    <string name="key_press_effect_random">Surprise (random)</string>
 
     <!-- Option to show language switch key [CHAR LIMIT=30] -->
     <string name="show_language_switch_key">Language switch key</string>

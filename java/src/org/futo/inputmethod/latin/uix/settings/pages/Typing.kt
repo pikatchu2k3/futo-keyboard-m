@@ -89,6 +89,7 @@ import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.settings.LongPressKey
 import org.futo.inputmethod.latin.settings.LongPressKeyLayoutSetting
 import org.futo.inputmethod.latin.settings.Settings
+import org.futo.inputmethod.keyboard.internal.KeyPressEffectDrawingPreview
 import org.futo.inputmethod.latin.settings.Settings.PREF_KEYPRESS_SOUND_VOLUME
 import org.futo.inputmethod.latin.settings.Settings.PREF_VIBRATION_DURATION_SETTINGS
 import org.futo.inputmethod.latin.settings.description
@@ -910,6 +911,55 @@ val TypingSettingsMenu = UserSettingsMenu(
             key = Settings.PREF_COLORFUL_POPUP_ON,
             default = {false}
         ),
+        UserSetting(
+            name = R.string.popup_transparency,
+            visibilityCheck = {
+                LocalSharedPrefsCache.current!!.currSharedPrefs.getBoolean(
+                    Settings.PREF_POPUP_ON,
+                    booleanResource(R.bool.config_default_key_preview_popup)
+                )
+            },
+            component = {
+                SettingSliderSharedPrefsInt(
+                    title = stringResource(R.string.popup_transparency),
+                    subtitle = stringResource(R.string.popup_transparency_subtitle),
+                    key = Settings.PREF_POPUP_TRANSPARENCY,
+                    default = 0,
+                    range = 0.0f..Settings.MAX_POPUP_TRANSPARENCY.toFloat(),
+                    transform = { it.roundToInt() },
+                    indicator = { "$it %" },
+                    steps = Settings.MAX_POPUP_TRANSPARENCY / 10 - 1
+                )
+            }
+        ),
+        UserSetting(name = R.string.key_press_effect) {
+            val colorful = useSharedPrefsBool(Settings.PREF_COLORFUL_POPUP_ON, false)
+            val setting = useSharedPrefsInt(
+                key = Settings.PREF_KEY_PRESS_EFFECT,
+                default = if(colorful.value) KeyPressEffectDrawingPreview.EFFECT_FIREWORKS
+                    else KeyPressEffectDrawingPreview.EFFECT_NONE
+            )
+
+            val effects = mapOf(
+                KeyPressEffectDrawingPreview.EFFECT_NONE to stringResource(R.string.key_press_effect_none),
+                KeyPressEffectDrawingPreview.EFFECT_FIREWORKS to stringResource(R.string.key_press_effect_fireworks),
+                KeyPressEffectDrawingPreview.EFFECT_CONFETTI to stringResource(R.string.key_press_effect_confetti),
+                KeyPressEffectDrawingPreview.EFFECT_HEARTS to stringResource(R.string.key_press_effect_hearts),
+                KeyPressEffectDrawingPreview.EFFECT_STARS to stringResource(R.string.key_press_effect_stars),
+                KeyPressEffectDrawingPreview.EFFECT_BUBBLES to stringResource(R.string.key_press_effect_bubbles),
+                KeyPressEffectDrawingPreview.EFFECT_SNOW to stringResource(R.string.key_press_effect_snow),
+                KeyPressEffectDrawingPreview.EFFECT_RIPPLE to stringResource(R.string.key_press_effect_ripple),
+                KeyPressEffectDrawingPreview.EFFECT_RANDOM to stringResource(R.string.key_press_effect_random),
+            )
+
+            DropDownPickerSettingItem(
+                label = stringResource(R.string.key_press_effect),
+                options = effects.keys.toList(),
+                selection = setting.value,
+                onSet = { setting.setValue(it) },
+                getDisplayName = { effects[it] ?: "?" },
+            )
+        },
         userSettingToggleSharedPrefs(
             title = R.string.vibrate_on_keypress,
             key = Settings.PREF_VIBRATE_ON,

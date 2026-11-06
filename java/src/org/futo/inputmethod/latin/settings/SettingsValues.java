@@ -72,6 +72,8 @@ public class SettingsValues {
     public final boolean mSoundOn;
     public final boolean mKeyPreviewPopupOn;
     public final boolean mColorfulKeyPopupOn;
+    public final int mKeyPressEffect;
+    public final float mKeyPreviewOpacity;
     public final boolean mShowsVoiceInputKey;
     public final boolean mIncludesOtherImesInLanguageSwitchList;
     public final boolean mShowsActionKey;
@@ -166,6 +168,8 @@ public class SettingsValues {
         mSoundOn = Settings.readKeypressSoundEnabled(prefs, res);
         mKeyPreviewPopupOn = Settings.readKeyPreviewPopupEnabled(prefs, res);
         mColorfulKeyPopupOn = prefs.getBoolean(Settings.PREF_COLORFUL_POPUP_ON, false);
+        mKeyPressEffect = Settings.readKeyPressEffect(prefs);
+        mKeyPreviewOpacity = Settings.readKeyPreviewOpacity(prefs);
         mSlidingKeyInputPreviewEnabled = prefs.getBoolean(
                 DebugSettings.PREF_SLIDING_KEY_INPUT_PREVIEW, true);
         mShowsVoiceInputKey = true;
