@@ -379,6 +379,13 @@ val SYSTEM_VOICE_INPUT_PACKAGE = SettingsKey(
     default = ""
 )
 
+/** Futo Keyboard M: true = SYSTEM_VOICE_INPUT_PACKAGE ist eine App mit RECOGNIZE_SPEECH-Popup
+ *  (z.B. Offline Voice Input), false = eine Sprach-Tastatur (IME), auf die umgeschaltet wird. */
+val SYSTEM_VOICE_INPUT_POPUP = SettingsKey(
+    key = booleanPreferencesKey("systemVoiceInputPopup"),
+    default = false
+)
+
 val USE_TRANSFORMER_FINETUNING = SettingsKey(
     key = booleanPreferencesKey("useTransformerFinetuning2"),
     default = false

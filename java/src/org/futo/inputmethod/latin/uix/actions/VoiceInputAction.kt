@@ -2,7 +2,9 @@ package org.futo.inputmethod.latin.uix.actions
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
@@ -61,6 +63,8 @@ import org.futo.inputmethod.latin.uix.KeyboardManagerForAction
 import org.futo.inputmethod.latin.uix.PREFER_BLUETOOTH
 import org.futo.inputmethod.latin.uix.PersistentActionState
 import org.futo.inputmethod.latin.uix.ResourceHelper
+import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_PACKAGE
+import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_POPUP
 import org.futo.inputmethod.latin.uix.USE_PERSONAL_DICT
 import org.futo.inputmethod.latin.uix.USE_VAD_AUTOSTOP
 import org.futo.inputmethod.latin.uix.VERBOSE_PROGRESS
@@ -90,7 +94,8 @@ import java.util.Locale
  * B1-Patch (Futo Shizuku): Spracherkennung ueber den RECOGNIZE_SPEECH-Popup-Weg.
  *
  * Statt auf die System-Voice-IME umzuschalten (switchToShortcutIme) oeffnet der
- * Mic-Key direkt das Popup der Offline-Voice-App (RecognizeActivity). Die App
+ * Mic-Key direkt das Popup der in den Einstellungen gewaehlten App (RECOGNIZE_SPEECH).
+ * Ist dort eine Sprach-Tastatur (IME) gewaehlt, gilt das Upstream-Verhalten. Die App
  * nimmt mit IHRER eigenen Mikrofon-Berechtigung auf — Futo Shizuku braucht KEIN
  * RECORD_AUDIO, kein System-Default-Setting, kein Shizuku/ADB. Das Ergebnis wird
  * ueber die Proxy-Activity zurueckgegeben und ins aktive Textfeld committed.
@@ -109,22 +114,49 @@ object VoiceResultBridge {
     var generation = 0
 }
 
+/** Frueher fest verdrahtete Popup-App; dient als Fallback fuer Altinstallationen ohne Auswahl. */
+const val LEGACY_POPUP_VOICE_PACKAGE = "dev.notune.transcribe"
+
+/** Alle Apps, die einen RECOGNIZE_SPEECH-Popup anbieten (z.B. Offline Voice Input). */
+fun findRecognizeSpeechActivities(context: Context): List<ActivityInfo> =
+    context.packageManager.queryIntentActivities(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0)
+        .mapNotNull { it.activityInfo }
+        .filter { it.packageName != context.packageName }
+        .distinctBy { it.packageName }
+
+/** RECOGNIZE_SPEECH-Activity eines bestimmten Pakets, oder null wenn nicht (mehr) installiert. */
+fun resolveRecognizeSpeechComponent(context: Context, packageName: String): ComponentName? =
+    context.packageManager.queryIntentActivities(
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).setPackage(packageName), 0
+    ).firstOrNull()?.activityInfo?.let { ComponentName(it.packageName, it.name) }
+
+/** Popup-Paket, das der Mic-Key nutzen soll, oder null wenn eine Sprach-Tastatur (IME) gewaehlt ist. */
+private fun popupVoicePackage(context: Context): String? {
+    val pkg = context.getSetting(SYSTEM_VOICE_INPUT_PACKAGE)
+    return when {
+        context.getSetting(SYSTEM_VOICE_INPUT_POPUP) -> pkg.ifEmpty { LEGACY_POPUP_VOICE_PACKAGE }
+        // Altinstallationen (vor der Auswahl): externe Eingabe an, aber kein Paket gewaehlt
+        pkg.isEmpty() -> LEGACY_POPUP_VOICE_PACKAGE
+        else -> null
+    }
+}
+
 val SystemVoiceInputAction = Action(
     icon = R.drawable.mic_fill,
     name = R.string.action_system_voice_input_title,
     simplePressImpl = { manager, _ ->
         val context = manager.getContext()
 
-        val target = ComponentName(
-            "dev.notune.transcribe",
-            "dev.notune.transcribe.RecognizeActivity"
-        )
-        val available = context.packageManager.resolveActivity(
-            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).setComponent(target),
-            0
-        ) != null
-        if (!available) {
-            manager.announce("Offline Voice Input ist nicht installiert")
+        val popupPackage = popupVoicePackage(context)
+        if (popupPackage == null) {
+            // Sprach-Tastatur (IME) gewaehlt: Upstream-Verhalten (umschalten, sonst interne Eingabe)
+            manager.triggerSystemVoiceInput()
+            return@Action
+        }
+
+        val target = resolveRecognizeSpeechComponent(context, popupPackage)
+        if (target == null) {
+            manager.announce("Gewählte Spracheingabe-App ist nicht installiert")
             return@Action
         }
 
@@ -147,6 +179,7 @@ val SystemVoiceInputAction = Action(
             // RecognizeActivity (singleTask!) und reicht das Ergebnis ueber die Bridge zurueck.
             context.startActivity(
                 Intent(context, VoiceResultProxyActivity::class.java)
+                    .putExtra(VoiceResultProxyActivity.EXTRA_TARGET, target)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         } catch (e: Exception) {

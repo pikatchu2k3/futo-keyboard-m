@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.runBlocking
 import org.futo.inputmethod.latin.R
 import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_PACKAGE
+import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_POPUP
 import org.futo.inputmethod.latin.uix.USE_SYSTEM_VOICE_INPUT
 import org.futo.inputmethod.latin.uix.getSetting
 import org.futo.inputmethod.latin.uix.setSetting
@@ -37,6 +38,7 @@ class VoiceInputSwitchActivity : ComponentActivity() {
         runBlocking {
             setSetting(SYSTEM_VOICE_INPUT_PACKAGE, targetPackage!!)
             setSetting(USE_SYSTEM_VOICE_INPUT, true)
+            setSetting(SYSTEM_VOICE_INPUT_POPUP, false)
         }
     }
 
