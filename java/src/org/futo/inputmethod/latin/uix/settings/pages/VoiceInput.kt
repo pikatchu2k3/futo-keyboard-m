@@ -15,9 +15,12 @@ import org.futo.inputmethod.latin.uix.DISALLOW_SYMBOLS
 import org.futo.inputmethod.latin.uix.ENABLE_SOUND
 import org.futo.inputmethod.latin.uix.PREFER_BLUETOOTH
 import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_PACKAGE
+import org.futo.inputmethod.latin.uix.SYSTEM_VOICE_INPUT_POPUP
 import org.futo.inputmethod.latin.uix.USE_PERSONAL_DICT
 import org.futo.inputmethod.latin.uix.USE_SYSTEM_VOICE_INPUT
 import org.futo.inputmethod.latin.uix.USE_VAD_AUTOSTOP
+import org.futo.inputmethod.latin.uix.actions.LEGACY_POPUP_VOICE_PACKAGE
+import org.futo.inputmethod.latin.uix.actions.findRecognizeSpeechActivities
 import org.futo.inputmethod.latin.uix.settings.DropDownPickerSettingItem
 import org.futo.inputmethod.latin.uix.settings.NavigationItemStyle
 import org.futo.inputmethod.latin.uix.settings.Tip
@@ -36,6 +39,8 @@ private data class VoiceIMEInfo(
     val builtin: Boolean,
     val name: String,
     val packageName: String,
+    // Futo Keyboard M: App mit RECOGNIZE_SPEECH-Popup statt Sprach-Tastatur (IME)
+    val popup: Boolean = false,
 )
 
 @Composable
@@ -65,6 +70,7 @@ val VoiceInputMenu = UserSettingsMenu(
         ) {
             val useExternal = useDataStore(USE_SYSTEM_VOICE_INPUT)
             val externalPkg = useDataStore(SYSTEM_VOICE_INPUT_PACKAGE)
+            val externalPopup = useDataStore(SYSTEM_VOICE_INPUT_POPUP)
 
             val context = LocalContext.current
             val res = LocalResources.current
@@ -79,12 +85,27 @@ val VoiceInputMenu = UserSettingsMenu(
                     }.map {
                         VoiceIMEInfo(false, it.loadLabel(context.packageManager)?.toString() ?: it.packageName, it.packageName)
                     })
+
+                    // Futo Keyboard M: Apps, die nur einen Spracheingabe-Popup anbieten (keine Tastatur)
+                    val imePackages = map { it.packageName }.toSet()
+                    addAll(findRecognizeSpeechActivities(context).map {
+                        val label = it.applicationInfo.loadLabel(context.packageManager).toString()
+                        VoiceIMEInfo(
+                            false,
+                            if(it.packageName in imePackages) "$label (Popup)" else label,
+                            it.packageName,
+                            popup = true
+                        )
+                    })
                 }
             }
 
-            val currOption = remember(externalPkg.value) {
-                if(externalPkg.value == "") options[0] else
-                options.find { it.packageName == externalPkg.value }
+            // Altinstallationen: externe Eingabe an, aber kein Paket gewaehlt -> frueher fest verdrahtete Popup-App
+            val effectivePkg = if(useExternal.value && externalPkg.value == "") LEGACY_POPUP_VOICE_PACKAGE else externalPkg.value
+            val effectivePopup = externalPopup.value || (useExternal.value && externalPkg.value == "")
+            val currOption = remember(options, useExternal.value, effectivePkg, effectivePopup) {
+                if(!useExternal.value) options[0] else
+                options.find { !it.builtin && it.packageName == effectivePkg && it.popup == effectivePopup }
             }
 
 
@@ -95,6 +116,7 @@ val VoiceInputMenu = UserSettingsMenu(
                 {
                     useExternal.setValue(!it.builtin)
                     externalPkg.setValue(it.packageName ?: "")
+                    externalPopup.setValue(it.popup)
                 },
                 {
                     if(it.builtin) res.getString(R.string.voice_input_settings_backend_system_internal)
@@ -102,7 +124,7 @@ val VoiceInputMenu = UserSettingsMenu(
                 }
             )
 
-            if(useExternal.value && externalPkg.value.isNotEmpty()) {
+            if(useExternal.value && effectivePkg.isNotEmpty()) {
                 val privacyWhitelist = listOf(
                     "org.futo.voiceinput",
                     "org.futo.voiceinput.dev",
@@ -110,9 +132,9 @@ val VoiceInputMenu = UserSettingsMenu(
                     "dev.soupslurpr.transcribro"
                 )
 
-                if(!privacyWhitelist.contains(externalPkg.value))
+                if(!privacyWhitelist.contains(effectivePkg))
                     Tip(stringResource(R.string.voice_input_settings_backend_system_external_warning,
-                        currOption?.name ?: externalPkg.value))
+                        currOption?.name ?: effectivePkg))
             }
         },
 

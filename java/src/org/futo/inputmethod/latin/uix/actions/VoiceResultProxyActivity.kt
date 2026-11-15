@@ -12,7 +12,7 @@ import android.util.Log
 /**
  * Transparente Proxy-Activity fuer den RECOGNIZE_SPEECH-Popup-Weg (B1-Patch).
  *
- * Startet die RecognizeActivity der Offline-Voice-App per startActivityForResult
+ * Startet die RECOGNIZE_SPEECH-Activity der gewaehlten App ([EXTRA_TARGET]) per startActivityForResult
  * und reicht das Ergebnis (EXTRA_RESULTS) ueber [VoiceResultBridge] an den
  * Mic-Key-Action weiter, der es ins aktive Textfeld committed.
  *
@@ -25,10 +25,14 @@ class VoiceResultProxyActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.i(TAG, "onCreate")
-        val target = ComponentName(
-            "dev.notune.transcribe",
-            "dev.notune.transcribe.RecognizeActivity"
-        )
+        @Suppress("DEPRECATION")
+        val target = intent.getParcelableExtra<ComponentName>(EXTRA_TARGET)
+        if (target == null) {
+            Log.e(TAG, "no target component")
+            VoiceResultBridge.onText = null
+            finish()
+            return
+        }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .setComponent(target)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -75,6 +79,7 @@ class VoiceResultProxyActivity : Activity() {
     }
 
     companion object {
+        const val EXTRA_TARGET = "org.futo.inputmethod.latin.voice.TARGET"
         private const val TAG = "FutoShizukuVoice"
         private const val REQ_RECOGNIZE = 1001
         private const val COMMIT_DELAY_MS = 500L
