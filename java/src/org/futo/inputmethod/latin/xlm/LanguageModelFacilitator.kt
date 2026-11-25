@@ -242,12 +242,16 @@ public class LanguageModelFacilitator(
             14, values.ngramContext.isBeginningOfSentenceContext, false)
 
 
+        val isCorrecting = values.composedData.mTypedWord.isNotEmpty()
         val reweightedSuggestions = lmSuggestions.mapIndexedNotNull { i, it ->
             if(transformerWeight == Float.NEGATIVE_INFINITY) { null } else {
+                // While correcting, only boost LM results the model is confident about; an uncertain
+                // LM guess must not push a dictionary correction of the typed word out of first place
+                val weight = if(isCorrecting && !it.isAprapreateForAutoCorrection()) transformerWeight.coerceAtMost(1.0f) else transformerWeight
                 SuggestedWordInfo(
                     it.mWord,
                     it.mPrevWordsContext,
-                    (it.mScore.toFloat() * transformerWeight).toLong().coerceAtMost(Int.MAX_VALUE.toLong() - lmSuggestions.size)
+                    (it.mScore.toFloat() * weight).toLong().coerceAtMost(Int.MAX_VALUE.toLong() - lmSuggestions.size)
                         .toInt() - i + (lmSuggestions.size - 1),
                     it.mKindAndFlags,
                     it.mSourceDict,
@@ -349,6 +353,8 @@ public class LanguageModelFacilitator(
         if(maxWordDict?.mSourceDict?.mDictType == Dictionary.TYPE_USER_HISTORY
             && maxWordDict.mScore > 100
             && maxWord != null
+            // A confident LM correction must not be overruled by a typo the history learned from uncorrected input
+            && !maxWord.isAprapreateForAutoCorrection()
             && (maxWordDict.mWord == values.composedData.mTypedWord || maxWordDict.mWord.length > 1)
         ) {
             if(BuildConfig.DEBUG) Log.d(TAG, "type user history found")
