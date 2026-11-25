@@ -49,6 +49,9 @@ val AllowTransformerOnNonQWERTYLayouts = SettingsKey(
     false
 )
 
+// Minimum LM probability to auto-correct a typed word that is itself in the dictionary
+private const val VALID_WORD_MIN_LM_PROBABILITY = 0.9f
+
 internal fun SuggestedWordInfo.add(other: SuggestedWordInfo): SuggestedWordInfo {
     assert(mWord == other.mWord)
 
@@ -242,18 +245,25 @@ public class LanguageModelFacilitator(
             14, values.ngramContext.isBeginningOfSentenceContext, false)
 
 
-        val isCorrecting = values.composedData.mTypedWord.isNotEmpty()
+        val typedWord = values.composedData.mTypedWord
+        val isCorrecting = typedWord.isNotEmpty()
+        // A correctly typed dictionary word is only replaced when the LM is very sure; otherwise its
+        // correction stays a suggestion instead of being forced
+        val protectTypedWord = isCorrecting && suggestedWordsDict.mTypedWordValid
         val reweightedSuggestions = lmSuggestions.mapIndexedNotNull { i, it ->
             if(transformerWeight == Float.NEGATIVE_INFINITY) { null } else {
+                val lmProbability = (it.mScore - 100000) / 500000.0f // inverse of LanguageModel.getSuggestionsInternal
+                val confident = it.isAprapreateForAutoCorrection() && !(protectTypedWord
+                        && !it.mWord.equals(typedWord, ignoreCase = true) && lmProbability < VALID_WORD_MIN_LM_PROBABILITY)
                 // While correcting, only boost LM results the model is confident about; an uncertain
                 // LM guess must not push a dictionary correction of the typed word out of first place
-                val weight = if(isCorrecting && !it.isAprapreateForAutoCorrection()) transformerWeight.coerceAtMost(1.0f) else transformerWeight
+                val weight = if(isCorrecting && !confident) transformerWeight.coerceAtMost(1.0f) else transformerWeight
                 SuggestedWordInfo(
                     it.mWord,
                     it.mPrevWordsContext,
                     (it.mScore.toFloat() * weight).toLong().coerceAtMost(Int.MAX_VALUE.toLong() - lmSuggestions.size)
                         .toInt() - i + (lmSuggestions.size - 1),
-                    it.mKindAndFlags,
+                    if(it.isAprapreateForAutoCorrection() && !confident) SuggestedWordInfo.KIND_PREDICTION else it.mKindAndFlags,
                     it.mSourceDict,
                     it.mIndexOfTouchPointOfSecondWord,
                     it.mAutoCommitFirstWordConfidence
